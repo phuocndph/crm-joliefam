@@ -1,5 +1,6 @@
 import { readGhnNewDirectory } from './ghn-new-address.js';
 import { readGhnProviderJson } from './ghn-provider-json.js';
+import {ghnUnsupportedServiceResponse,ghnUnsupportedQuoteError,publicGhnQuoteErrorCode} from './ghn-quote-error.js';
 import type express from 'express';
 import type { Pool, PoolClient } from 'pg';
 import { createHash, randomUUID } from 'node:crypto';
@@ -12,7 +13,7 @@ import { assertZcrmOrderExecutable } from './zcrm-commerce.js';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
 const integer = (max: number, min = 0) => z.number().int().min(min).max(max);
 export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
-const item = z.object({ name: z.string().trim().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1), length: integer(200,1), width: integer(200,1), height: integer(200,1), price: integer(50000000).default(0) }).strict();
+const item = z.object({ name: z.string().trim().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1), length: integer(200,1).optional(), width: integer(200,1).optional(), height: integer(200,1).optional(), code:z.string().trim().min(1).max(100).optional(), price: integer(50000000).default(0) }).strict();
 const payload = z.object({
   to_name: z.string().trim().min(1).max(100), to_phone: z.string().trim().regex(/^(?:0\d{9}|\+84\d{9})$/),
   to_address: z.string().trim().min(3).max(500), to_district_id: integer(99999999,1).optional(), to_ward_code: z.string().regex(/^[A-Za-z0-9_-]{1,30}$/).optional(),
@@ -22,20 +23,24 @@ const payload = z.object({
   note: z.string().trim().max(1000).default(''), required_note: z.enum(['KHONGCHOXEMHANG','CHOXEMHANGKHONGTHU','CHOTHUHANG']),
   content: z.string().trim().min(1).max(2000), payment_type_id: z.union([z.literal(1),z.literal(2)]),
   service_type_id: z.union([z.literal(2),z.literal(5)]), service_id: integer(99999999,1).optional(), items: z.array(item).min(1).max(100),
+  pick_shift:z.array(integer(Number.MAX_SAFE_INTEGER,1)).length(1).optional(),
 }).strict();
 const createSchema = z.object({ idempotencyKey: z.string().uuid(), shopId: z.string().regex(/^[1-9]\d{0,15}$/),
   orderId: z.string().min(1).max(100).nullable().default(null), orderNumber: z.string().trim().max(100).default(''),
   provinceId: integer(99999999,1), addressMode:z.literal('NEW2').optional(), newWardId:integer(99999999,1).optional(), orderData: payload,
+  orderMode:z.enum(['LIGHT','HEAVY']).optional(),
+  entryMode:z.literal('PACKAGES').optional(),
   // Optional metadata has no defaults/transforms: historical request hashes stay unchanged.
   productLines: z.array(z.object({ name: z.string().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1).optional(), code: z.string().min(1).max(100).optional() }).strict()).min(1).max(100).optional(),
 }).strict();
 type Input = z.infer<typeof createSchema>;
 
-export const validateGhnProductLines = (input: Pick<Input, 'productLines' | 'orderData'>) => {
+export const validateGhnProductLines = (input: Pick<Input, 'productLines' | 'orderData' | 'orderMode'>) => {
   if (input.productLines === undefined) return;
   if (input.productLines.some(row => !row.name.trim() || row.code !== undefined && !row.code.trim())) throw fail('Thông tin sản phẩm không hợp lệ.');
   const content = input.productLines.map(row => `${row.name.trim()}${row.code?.trim() ? ` [${row.code.trim()}]` : ''} × ${row.quantity}`).join(', ');
   if (content.length > 2000 || input.orderData.content !== content) throw fail('Nội dung vận đơn không khớp danh sách sản phẩm đã khai.');
+  if(input.orderMode==='LIGHT' && (input.productLines.length!==input.orderData.items.length || input.productLines.some((row,index)=>{const actual=input.orderData.items[index];return row.name.trim()!==actual.name || row.quantity!==actual.quantity || row.weight!==actual.weight || (row.code?.trim()??'')!==(actual.code??'');})))throw fail('Danh sách sản phẩm GHN không khớp nội dung đã khai.');
 };
 type Attempt = { id:string; actor_id:string; manager_id:string; tenant_id:string; order_id:string|null; scope_key:string; shop_id:string; config_revision:number; idempotency_key:string; payload_hash:string; client_order_code:string; status:string; order_code:string|null; request_data:Input; result_data:Record<string,unknown> };
 type Queryable = Pool | PoolClient;
@@ -50,10 +55,37 @@ export const ghnPackedParcelItemName = (content: string, index = 0, count = 1) =
   if (/^[\uD800-\uDBFF]$/.test(prefix.charAt(prefix.length - 1))) prefix = prefix.slice(0, -1);
   return `${prefix}…`;
 };
-export const validateGhnPackedParcel = (orderData: Input['orderData']) => {
+export const validateGhnPackedParcel = (orderData: Input['orderData'], orderMode?:Input['orderMode'],entryMode?:Input['entryMode']) => {
   const count = orderData.items.length;
   if (count < 1 || count > 100) throw fail('Mỗi vận đơn GHN có từ 1 đến 100 kiện.', 400);
+  if(entryMode==='PACKAGES'){
+    if(orderMode||orderData.pick_shift)throw fail('Không trộn các kiểu nhập vận đơn.');
+    const dimensions=['length','width','height'] as const,type=orderData.service_type_id;
+    if(![2,5].includes(type)||type===2&&count!==1)throw fail('Dịch vụ không hỗ trợ danh sách kiện.');
+    if(type===2?dimensions.some(field=>orderData[field]!==orderData.items[0][field]):dimensions.some(field=>orderData[field]!==undefined))throw fail('Kích thước vận đơn không khớp dịch vụ đã chọn.');
+    if(orderData.items.some((row,index)=>row.name!==`Kiện ${index+1}`||row.quantity!==1||row.price!==0||row.code!==undefined||dimensions.some(field=>!Number.isSafeInteger(row[field])||Number(row[field])<1||Number(row[field])>200)))throw fail('Thông tin từng kiện không hợp lệ.');
+    if(orderData.items.reduce((sum,row)=>sum+row.weight,0)!==orderData.weight)throw fail('Tổng cân nặng không khớp danh sách kiện.');
+    return;
+  }
+  if(orderMode){
+    const dimensions=['length','width','height'] as const;
+    if(orderData.service_type_id!==(orderMode==='LIGHT'?2:5))throw fail('Dịch vụ không khớp loại hàng đã chọn.');
+    if(orderMode==='LIGHT'){
+      if(orderData.weight>50000 || dimensions.some(field=>!Number.isSafeInteger(orderData[field]) || Number(orderData[field])<1 || Number(orderData[field])>200))throw fail('Nhập KL và đủ kích thước cả gói hàng nhẹ.');
+      if(orderData.items.some(row=>dimensions.some(field=>row[field]!==undefined)))throw fail('Hàng nhẹ khai kích thước cả gói, không khai theo sản phẩm.');
+      const content=orderData.items.map(row=>`${row.name}${row.code?` [${row.code}]`:''} × ${row.quantity}`).join(', ');
+      if(content!==orderData.content)throw fail('Nội dung không khớp danh sách sản phẩm hàng nhẹ.');
+    }else{
+      if(dimensions.some(field=>orderData[field]!==undefined))throw fail('Hàng nặng dùng số đo riêng của từng kiện.');
+      if(orderData.items.some(row=>row.quantity!==1 || row.code!==undefined || dimensions.some(field=>!Number.isSafeInteger(row[field]) || Number(row[field])<1 || Number(row[field])>200)))throw fail('Mỗi kiện hàng nặng cần số lượng một và đủ kích thước.');
+      if(orderData.items.reduce((sum,row)=>sum+row.weight,0)!==orderData.weight)throw fail('Tổng cân nặng các kiện không khớp vận đơn.');
+      if(orderData.items.map(row=>`${row.name} × 1`).join(', ')!==orderData.content)throw fail('Nội dung không khớp các kiện hàng nặng.');
+    }
+    if(orderData.items.some(row=>row.price!==0))throw fail('Không tự phân bổ giá trị hàng hóa vào từng dòng.');
+    return;
+  }
   orderData.items.forEach((parcel, index) => {
+    if (parcel.code !== undefined || ![parcel.length,parcel.width,parcel.height].every(value=>Number.isSafeInteger(value)&&Number(value)>=1&&Number(value)<=200)) throw fail('Nhập đầy đủ kích thước kiện đã đóng gói.',400);
     if (parcel.name !== ghnPackedParcelItemName(orderData.content, index, count) || parcel.quantity !== 1 || parcel.price !== 0) throw fail('Mỗi kiện GHN phải có đúng nội dung hàng gửi và số lượng một.', 400);
   });
   if (orderData.items.reduce((sum, parcel) => sum + parcel.weight, 0) !== orderData.weight) throw fail('Tổng cân nặng các kiện không khớp cân nặng vận đơn.', 400);
@@ -66,10 +98,14 @@ export const validateGhnPackedParcel = (orderData: Input['orderData']) => {
 };
 
 /** Missing or different parcel evidence must never resolve an uncertain create. */
-export const ghnMultiParcelEvidenceMatches = (submitted: Input['orderData'], value: unknown): boolean => {
-  if (submitted.items.length <= 1) return true; // Historical single-parcel reconciliation is unchanged.
+export const ghnMultiParcelEvidenceMatches = (submitted: Input['orderData'], value: unknown,orderMode?:Input['orderMode'],entryMode?:Input['entryMode']): boolean => {
+  if (!orderMode && !entryMode && submitted.items.length <= 1) return true; // Historical single-parcel reconciliation is unchanged.
   if (!Array.isArray(value) || value.length !== submitted.items.length) return false;
   const signature = (row: Record<string, unknown>) => {
+    if(orderMode==='LIGHT'){
+      if(typeof row.name!=='string' || !['quantity','weight'].every(field=>typeof row[field]==='number'&&Number.isSafeInteger(row[field])&&Number(row[field])>0) || row.code!==undefined&&typeof row.code!=='string')return null;
+      return JSON.stringify([row.name,row.quantity,row.weight,row.code??'']);
+    }
     if (typeof row.name !== 'string' || !['quantity', 'weight', 'length', 'width', 'height'].every(field => typeof row[field] === 'number' && Number.isSafeInteger(row[field]) && Number(row[field]) > 0)) return null;
     return JSON.stringify([row.name, row.quantity, row.weight, row.length, row.width, row.height]);
   };
@@ -127,12 +163,16 @@ export class GhnOrders {
       if (!result.success || !Array.isArray(result.data)) throw fail('Không xác minh được địa chỉ hoặc dịch vụ GHN.',502);
       return result.data as Record<string,unknown>[];
     };
+    if(input.orderData.pick_shift){
+      const available=await read('get_pick_shifts');
+      if(!available.some(row=>row.id===input.orderData.pick_shift![0]))throw fail('Ca lấy hàng đã hết hạn hoặc không còn khả dụng. Chọn lại ca lấy hàng.');
+    }
     if(input.addressMode==='NEW2') {
       if(input.orderData.to_district_id!==undefined||input.orderData.to_ward_code!==undefined||input.orderData.service_id!==undefined)throw fail('Không trộn mã địa chỉ cũ vào địa chỉ mới.');
       const province=(await readGhnNewDirectory(config,this.fetcher)).find(row=>row._id===input.provinceId);
       const ward=(await readGhnNewDirectory(config,this.fetcher,input.provinceId)).find(row=>row._id===input.newWardId&&row.parent_id===input.provinceId);
       if(!province||!ward)throw fail('Tỉnh và phường/xã mới GHN không khớp.');
-      validateGhnPackedParcel(input.orderData);
+      validateGhnPackedParcel(input.orderData,input.orderMode,input.entryMode);
       return {...input.orderData,to_province_name:province.name,to_ward_name:ward.name,to_district_name:'',is_new_to_address:true};
     }
     if(input.newWardId!==undefined||!input.orderData.to_district_id||!input.orderData.to_ward_code||!input.orderData.service_id)throw fail('Chọn đủ địa chỉ và dịch vụ GHN cũ.');
@@ -142,16 +182,17 @@ export class GhnOrders {
     if (!province || !district || !ward) throw fail('Tỉnh, quận và phường GHN không khớp nhau. Hãy chọn lại địa chỉ.');
     const service = (await read('get_services',{shopId:sender.id,toDistrictId:input.orderData.to_district_id})).find(row => row.service_id === input.orderData.service_id && row.service_type_id === input.orderData.service_type_id);
     if (!service) throw fail('Dịch vụ GHN không còn phù hợp với cửa hàng và địa chỉ đã chọn.');
-    validateGhnPackedParcel(input.orderData);
+    validateGhnPackedParcel(input.orderData,input.orderMode,input.entryMode);
     const originWard = sender.metadata.ward_code;
     return { ...input.orderData, to_province_name:String(province.ProvinceName), to_district_name:String(district.DistrictName), to_ward_name:String(ward.WardName), is_new_to_address:false, from_district_id:sender.district, ...(typeof originWard==='string'&&/^[\w-]{1,30}$/.test(originWard)?{from_ward_code:originWard}:{}) };
   }
   async preview(actor:string,raw:unknown) {
     const input=createSchema.parse(raw);if(input.addressMode!=='NEW2')throw fail('Xem trước địa chỉ mới yêu cầu hệ hai cấp.');
-    await this.scope(this.pool,actor,input.orderId,true);validateGhnProductLines(input);validateGhnPackedParcel(input.orderData);
+    await this.scope(this.pool,actor,input.orderId,true);validateGhnProductLines(input);validateGhnPackedParcel(input.orderData,input.orderMode,input.entryMode);
     const config=await this.config(),body=await this.validate(input,config);
     const response=await this.fetcher('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/preview',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Token:config.token,ShopId:input.shopId},body:JSON.stringify(body)});
     const result=await readGhnProviderJson(response),data=result.data as Record<string,unknown>|undefined;
+    if(input.entryMode==='PACKAGES'&&ghnUnsupportedServiceResponse(response,result))throw ghnUnsupportedQuoteError();
     if(!response.ok||result.code!==200||!data||data.order_code!==''||typeof data.total_fee!=='number'||!Number.isSafeInteger(data.total_fee)||data.total_fee<0)throw fail('GHN chưa xác nhận được cước cho địa chỉ mới.',502);
     const current=await this.config();await this.scope(this.pool,actor,input.orderId,true);if(current.revision!==config.revision||current.token!==config.token||!current.shops.includes(input.shopId))throw fail('Cấu hình đã thay đổi khi xem trước.',409);
     return {total:data.total_fee};
@@ -168,7 +209,7 @@ export class GhnOrders {
     // Keep historical replays above this point. New requests must carry the
     // complete measured parcel manifest before provider discovery or dispatch.
     validateGhnProductLines(input);
-    validateGhnPackedParcel(input.orderData);
+    validateGhnPackedParcel(input.orderData,input.orderMode,input.entryMode);
     await this.scope(this.pool,actor,input.orderId,true);
     const config = await this.config();
     const providerBody = await this.validate(input,config);
@@ -288,9 +329,11 @@ export class GhnOrders {
         const result=JSON.parse(text), data=result.data;
         const submitted=row.request_data.orderData;
         const failedCodMatches=data && (data.cod_failed_amount === undefined ? submitted.cod_failed_amount === 0 : typeof data.cod_failed_amount === 'number' && Number.isSafeInteger(data.cod_failed_amount) && data.cod_failed_amount === submitted.cod_failed_amount);
-        const physicalFields = submitted.items.length > 1 ? ['to_district_id','weight','cod_amount','insurance_value','service_type_id','payment_type_id'] : ['to_district_id','weight','length','width','height','cod_amount','insurance_value','service_type_id','payment_type_id'];
+        const physicalFields = (row.request_data.entryMode==='PACKAGES'?submitted.service_type_id===5:row.request_data.orderMode==='HEAVY' || !row.request_data.orderMode && submitted.items.length > 1) ? ['to_district_id','weight','cod_amount','insurance_value','service_type_id','payment_type_id'] : ['to_district_id','weight','length','width','height','cod_amount','insurance_value','service_type_id','payment_type_id'];
         const newAddressMatches=row.request_data.addressMode!=='NEW2'||data?.is_new_to_address===true&&data.to_province_name===(await readGhnNewDirectory(config,this.fetcher)).find(value=>value._id===row.request_data.provinceId)?.name&&data.to_ward_name===(await readGhnNewDirectory(config,this.fetcher,row.request_data.provinceId)).find(value=>value._id===row.request_data.newWardId)?.name;
-        const same=data && newAddressMatches && failedCodMatches && ghnMultiParcelEvidenceMatches(submitted, data.items) && (row.request_data.addressMode==='NEW2'?['to_name','to_phone','to_address']:['to_name','to_phone','to_address','to_ward_code']).every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && physicalFields.filter(field=>row.request_data.addressMode!=='NEW2'||field!=='to_district_id').every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
+        const packageContentMatches=row.request_data.entryMode!=='PACKAGES'||data?.content===submitted.content;
+        const packageServiceMatches=row.request_data.entryMode!=='PACKAGES'||row.request_data.addressMode==='NEW2'||data?.service_id===undefined||data.service_id===submitted.service_id;
+        const same=data && packageContentMatches && packageServiceMatches && newAddressMatches && failedCodMatches && ghnMultiParcelEvidenceMatches(submitted, data.items,row.request_data.orderMode,row.request_data.entryMode) && (row.request_data.addressMode==='NEW2'?['to_name','to_phone','to_address']:['to_name','to_phone','to_address','to_ward_code']).every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && physicalFields.filter(field=>row.request_data.addressMode!=='NEW2'||field!=='to_district_id').every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
         if (response.ok && result.code===200 && same && String(data.shop_id)===row.shop_id && data.client_order_code===row.client_order_code && /^[A-Za-z0-9_-]{3,60}$/.test(data.order_code||'')) {
           row=(await this.pool.query<Attempt>(`update integration_private.ghn_order_attempts set status='REMOTE_CREATED',order_code=$2,result_data=$3::jsonb,updated_at=now() where id=$1 and status in ('IN_FLIGHT','UNKNOWN') returning *`,[row.id,data.order_code,JSON.stringify(this.safeResult(data))])).rows[0]||await this.read(actor,key);
           if(row.status==='REMOTE_CREATED') return this.finalize(row);
@@ -330,7 +373,7 @@ export class GhnOrders {
 }
 
 export function registerGhnOrders(app:express.Express, service:GhnOrders,actor:()=>string) {
-  const send=(res:express.Response,error:unknown)=>res.status(error instanceof z.ZodError?400:Number((error as {status?:number}).status||503)).json({message:error instanceof z.ZodError?'Thông tin tạo đơn GHN không hợp lệ.':error instanceof Error && 'status' in error?error.message:'Không xử lý được lượt tạo GHN. Hãy kiểm tra trạng thái trước khi thử lại.'});
+  const send=(res:express.Response,error:unknown)=>res.status(error instanceof z.ZodError?400:Number((error as {status?:number}).status||503)).json({message:error instanceof z.ZodError?'Thông tin tạo đơn GHN không hợp lệ.':error instanceof Error && 'status' in error?error.message:'Không xử lý được lượt tạo GHN. Hãy kiểm tra trạng thái trước khi thử lại.',...publicGhnQuoteErrorCode(error)});
   app.get('/api/ghn-orders/recent',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.recent(actor(),typeof req.query.orderId==='string'?req.query.orderId:null));}catch(error){send(res,error);}});
   app.post('/api/ghn-orders/preview',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.preview(actor(),req.body));}catch(error){send(res,error);}});
   app.post('/api/ghn-orders',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.create(actor(),req.body));}catch(error){send(res,error);}});

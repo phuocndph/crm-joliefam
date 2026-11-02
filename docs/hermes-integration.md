@@ -1,3 +1,5 @@
+> Cập nhật: tài liệu dưới đây mô tả bảy quyền đọc ban đầu. MCP nghiệp vụ mở rộng dùng danh tính dịch vụ, quyền mô-đun rõ ràng và khóa thao tác bền: xem [integration-business-tools.md](integration-business-tools.md). Nâng cấp không tự cấp quyền, tạo khóa hoặc bật API.
+
 # API và MCP cho Hermes — bản chỉ đọc
 
 ## Đã triển khai

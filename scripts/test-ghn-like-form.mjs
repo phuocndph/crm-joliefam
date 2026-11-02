@@ -29,7 +29,7 @@ function harness(read=async()=>[], provider={configured:false}) {
   };
   const module={exports:{}};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
-    module,exports:module.exports,setTimeout:callback=>{timers.set(++timer,callback);return timer;},clearTimeout:id=>timers.delete(id),require:name=>name==='react'?react:name==='@/lib/ghn-address-match'?matching:name==='./GhnDirectorySearch'?{GhnDirectorySearch:'directory'}:name.startsWith('@/components/ui/')?Object.fromEntries(['Dialog','DialogContent','DialogHeader','DialogTitle','Button','Input','Label'].map(key=>[key,key])):require(name),
+    module,exports:module.exports,setTimeout:callback=>{timers.set(++timer,callback);return timer;},clearTimeout:id=>timers.delete(id),require:name=>name==='react'?react:name==='@/lib/ghn-address-match'?matching:name==='./GhnAddressModeSwitch'?{GhnAddressModeSwitch:'mode-switch'}:name==='./GhnDirectorySearch'?{GhnDirectorySearch:'directory'}:name.startsWith('@/components/ui/')?Object.fromEntries(['Dialog','DialogContent','DialogHeader','DialogTitle','Button','Input','Label'].map(key=>[key,key])):require(name),
   });
   const visit=(node,predicate)=>Array.isArray(node)?node.flatMap(child=>visit(child,predicate)):!node||typeof node!=='object'?[]:[...(predicate(node)?[node]:[]),...visit(node.props?.children,predicate)];
   const props={initial:structuredClone(initial),provinces,read:(action,body)=>action==='address_autocomplete_status'?Promise.resolve().then(()=>typeof provider==='function'?provider():provider):read(action,body),onCommit:value=>commits.push(value),onCancel:()=>cancels.push(true)};

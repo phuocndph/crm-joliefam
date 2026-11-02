@@ -263,6 +263,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (!response.ok) {
     const error = new LocalApiError(payload?.message || payload?.error || `Local API lỗi (${response.status})`, response.status,typeof (payload?.message || payload?.error)==='string', quoteCustomerErrorDetails(payload));
     if (typeof payload?.ghn_edit_not_dispatched === 'boolean') Object.assign(error, {ghnEditNotDispatched:payload.ghn_edit_not_dispatched});
+    if (payload?.code === 'GHN_SERVICE_UNSUPPORTED') Object.assign(error,{code:'GHN_SERVICE_UNSUPPORTED'});
     throw error;
   }
   return payload as T;
@@ -532,8 +533,12 @@ export const localApi = {
   inventoryAudit: () => request<InventoryAuditEvent[]>("/api/inventory/audit"),
   inventoryProductionOrders: () => request<ProductionOrderForIssue[]>("/api/inventory/production-orders"),
   productionOrders: (query?: { status?: string; product_id?: string; order_id?: string }) => request<Record<string, unknown>[]>("/api/production-orders", { query: { status: query?.status, productId: query?.product_id, orderId: query?.order_id } }),
+  productionSewingCodes: (query:{date:string;search?:string;offset?:number},authGuard?:LocalAuthGuard) => request<import('./production-sewing-selection').ProductionSewingCatalog>('/api/production-dispatch/sewing-codes',{query,authGuard}),
   productionWorkspace: (authGuard?:LocalAuthGuard) => request<import('./production-workspace-types').ProductionWorkspaceData>('/api/production-workspace',{authGuard}),
   productionWorkspaceDetails:(id:string)=>request<import('./production-workspace-types').ProductionWorkspaceDetails>(`/api/production-workspace/${encodeURIComponent(id)}/details`),
+  addProductionPlannedExtras:(id:string,body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/planned-extras`,{method:'POST',body,authGuard}),
+  cancelProductionPlannedExtra:(id:string,extraId:string,body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/planned-extras/${encodeURIComponent(extraId)}/cancel`,{method:'POST',body,authGuard}),
+  completeProductionPlannedExtra:(id:string,extraId:string,body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/planned-extras/${encodeURIComponent(extraId)}/complete`,{method:'POST',body,authGuard}),
   productionWorkspaceAction:(id:string,action:'receive'|'ship'|'complete'|'repair-tickets'|'cancel-uncut',body:Record<string,unknown>)=>request<Record<string,unknown>>(`/api/production-workspace/${encodeURIComponent(id)}/${action}`,{method:'POST',body}),
   orderShipments:(orderId:string,authGuard?:LocalAuthGuard)=>request<import('./order-shipment-types').OrderShipmentData>('/api/order-shipments',{query:{order_id:orderId},authGuard}),
   dispatchOrderShipment:(body:Record<string,unknown>,authGuard?:LocalAuthGuard)=>request<Record<string,unknown>>('/api/order-shipments',{method:'POST',body,authGuard}),

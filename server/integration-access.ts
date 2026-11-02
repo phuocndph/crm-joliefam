@@ -6,18 +6,23 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { integrationCatalog, unsupportedIntegrationModules, resourceCatalog, type IntegrationGrant } from './integration-catalog.js';
+import { integrationBusinessCapabilities,integrationBusinessTools } from './integration-business-catalog.js';
+import {createIntegrationInternalDispatcher} from './integration-internal-principal.js';
+import {registerIntegrationBusiness, businessInputSchema, businessToolSchema} from './integration-business.js';
+import {permissionCatalog,validatePermissionChanges} from './permission-policy.js';
 import { runtime } from './runtime.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
-const capabilitySchema = z.enum(['products.read','customers.read','orders.read','quotes.read','production.read','inventory.read','attendance.read']);
+const allCatalog=[...integrationCatalog,...integrationBusinessCapabilities];
+const capabilitySchema = z.string().refine(value=>allCatalog.some(c=>c.id===value),'Quyền không hỗ trợ.');
 const reasonSchema = z.string().trim().min(3).max(300);
 const idSchema = z.string().min(1).max(100);
-const grantSchema = z.object({ capability: capabilitySchema, resource_ids: z.array(idSchema).max(500), secondary_ids: z.array(idSchema).max(500).default([]), contact_access: z.boolean().default(false) }).strict();
+const grantSchema = z.object({ capability: capabilitySchema, resource_ids: z.array(idSchema).max(500), secondary_ids: z.array(idSchema).max(500).default([]), contact_access: z.boolean().default(false), all_resources:z.boolean().default(false) }).strict();
 const readInput = z.object({ id: idSchema.optional(), search: z.string().max(100).default(''), offset: z.coerce.number().int().min(0).max(10000).default(0), limit: z.coerce.number().int().min(1).max(100).default(30), from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).strict();
 const validDate = (value: string) => { const milliseconds = Date.parse(value); return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString().slice(0,10) === value; };
 type WorkBudget = { pending: number; routed: boolean; done: boolean; aborted: boolean; key_id?: string; settle: () => void; assertAlive: () => void };
-type Principal = { key_id: string; connection_id: string; token_hash: string; capabilities: string[]; request_id: string; work: WorkBudget };
+export type Principal = { key_id: string; connection_id: string; token_hash: string; capabilities: string[]; request_id: string; work: WorkBudget };
 type MachineRequest = express.Request & { integration?: Principal };
 type Caller = { userId: string } | null;
 const keyColumns = 'id,connection_id,name,prefix,capabilities,expires_at,revoked_at,last_used_at,created_at';
@@ -28,7 +33,8 @@ const selectColumns: Record<string,string> = {
  'quotes.read': 'r.id,r.quote_number,r.status,r.created_at,r.updated_at',
  'production.read': 'r.id::text id,r.production_order_number,r.production_batch_number,r.status,r.quantity_planned::text quantity_planned,r.quantity_good::text quantity_good,r.quantity_scrap::text quantity_scrap,r.quantity_rework::text quantity_rework,r.planned_start_date,r.planned_end_date,r.actual_start_at,r.actual_end_at,r.updated_at',
 };
-const effective = (grants:IntegrationGrant[]) => integrationCatalog.filter(c=>grants.some(g=>g.capability===c.id&&g.resource_ids.length&&(c.id!=='inventory.read'||g.secondary_ids.length)));
+export const effectiveIntegrationGrants = (grants:IntegrationGrant[]) => allCatalog.filter(c=>grants.some(g=>g.capability===c.id&&(g.capability.startsWith('business.')?g.all_resources===true:g.resource_ids.length&&(c.id!=='inventory.read'||g.secondary_ids.length))));
+const effective=effectiveIntegrationGrants;
 
 export function registerIntegrationAccess(app: express.Express, pool: Pool, resolveCaller: (req: express.Request) => Promise<Caller>) {
  const enabled = runtime.integrationEnabled;
@@ -62,7 +68,7 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
  };
  // Use a dedicated router: there is no fallback to generic browser adapters.
  const admin = express.Router(); admin.use(adminGuard);
- admin.get('/catalog',run(async(_req,res)=>res.json({ enabled, capabilities: integrationCatalog, unsupported: unsupportedIntegrationModules, limits: { requests_per_minute: 60, concurrent_per_process: 4, max_rows:100 }, api:'/api/integrations/v1', mcp:'/api/mcp' })));
+ admin.get('/catalog',run(async(_req,res)=>res.json({ enabled, capabilities: allCatalog, tools:integrationBusinessTools, execution_roles:['admin','manager','accountant','employee','team_leader'], execution_permissions:[...permissionCatalog], unsupported: unsupportedIntegrationModules, limits: { requests_per_minute: 60, concurrent_per_process: 4, max_rows:100 }, api:'/api/integrations/v1', mcp:'/api/mcp' })));
  admin.get('/connections',run(async(_req,res)=>res.json((await pool.query('select * from integration_access.connections order by created_at desc limit 200')).rows)));
  admin.post('/connections',run(async(req,res)=>{
   const data=z.object({name:z.string().trim().min(1).max(100),description:z.string().max(500).default(''),reason:reasonSchema}).strict().parse(req.body);
@@ -79,13 +85,15 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
   const rows=await pool.query(`select r.id::text id,r.${entry.code} code,r.${entry.name} name from ${entry.table} r where ${entry.active ? `r.${entry.active} and` : ''} not exists(select 1 from local_projection_tombstones t where t.source_table=$1 and t.source_key=r.id::text) and ($2='' or concat(r.${entry.code},' ',r.${entry.name}) ilike '%'||$2||'%') order by r.id limit 51 offset $3`,[entry.source,input.search,input.offset]);
   res.json({ rows:rows.rows.slice(0,50),has_more:rows.rows.length>50 });
  }));
- admin.get('/connections/:id/grants',run(async(req,res)=>{const id=z.string().uuid().parse(req.params.id);res.json(await transaction(async client=>{const connection=(await client.query('select policy_version from integration_access.connections where id=$1 for share',[id])).rows[0];if(!connection)throw fail(404,'Không tìm thấy kết nối.');const grants=(await client.query('select capability,resource_ids,secondary_ids,contact_access from integration_access.grants where connection_id=$1 order by capability',[id])).rows;return {policy_version:connection.policy_version,grants};}));}));
+ admin.get('/connections/:id/grants',run(async(req,res)=>{const id=z.string().uuid().parse(req.params.id);res.json(await transaction(async client=>{const connection=(await client.query('select policy_version from integration_access.connections where id=$1 for share',[id])).rows[0];if(!connection)throw fail(404,'Không tìm thấy kết nối.');const grants=(await client.query('select capability,resource_ids,secondary_ids,contact_access,all_resources from integration_access.grants where connection_id=$1 order by capability',[id])).rows;return {policy_version:connection.policy_version,grants};}));}));
  admin.put('/connections/:id/grants',run(async(req,res)=>{
-  const id=z.string().uuid().parse(req.params.id);const data=z.object({version:z.number().int().positive(),grants:z.array(grantSchema).max(7),reason:reasonSchema}).strict().parse(req.body);
+  const id=z.string().uuid().parse(req.params.id);const data=z.object({version:z.number().int().positive(),grants:z.array(grantSchema).max(150),reason:reasonSchema}).strict().parse(req.body);
   if(new Set(data.grants.map(g=>g.capability)).size!==data.grants.length)throw fail(400,'Không được lặp quyền.');
   const result=await transaction(async client=>{
    const updated=(await client.query('update integration_access.connections set policy_version=policy_version+1,updated_at=now() where id=$1 and policy_version=$2 returning *',[id,data.version])).rows[0];if(!updated)throw fail(409,'Quyền đã thay đổi. Hãy tải lại.');
    for(const grant of data.grants){
+    if(grant.capability.startsWith('business.')){if(!grant.all_resources||grant.resource_ids.length||grant.secondary_ids.length||grant.contact_access)throw fail(400,'Quyền mở rộng cần phạm vi toàn mô-đun rõ ràng.');continue;}
+    if(grant.all_resources)throw fail(400,'Bảy quyền đọc cũ vẫn cần chọn từng tài nguyên.');
     const definition=integrationCatalog.find(c=>c.id===grant.capability)!;
     if(grant.contact_access && grant.capability!=='customers.read')throw fail(400,'Quyền liên hệ chỉ dành cho khách hàng.');
     if(grant.secondary_ids.length && grant.capability!=='inventory.read')throw fail(400,'Phạm vi vật tư chỉ dành cho tồn kho.');
@@ -95,19 +103,19 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
     }
    }
    await client.query('delete from integration_access.grants where connection_id=$1',[id]);
-   for(const grant of data.grants)await client.query('insert into integration_access.grants(connection_id,capability,resource_ids,secondary_ids,contact_access) values($1,$2,$3,$4,$5)',[id,grant.capability,[...new Set(grant.resource_ids)],[...new Set(grant.secondary_ids)],grant.contact_access]);
+   for(const grant of data.grants)await client.query('insert into integration_access.grants(connection_id,capability,resource_ids,secondary_ids,contact_access,all_resources) values($1,$2,$3,$4,$5,$6)',[id,grant.capability,[...new Set(grant.resource_ids)],[...new Set(grant.secondary_ids)],grant.contact_access,grant.all_resources||false]);
    await audit(client,res.locals.integrationAdmin,'grants.replace','OK',id,null,data.reason,undefined,{version:updated.policy_version,grants:data.grants});return updated;
   });res.json(result);
  }));
  admin.get('/connections/:id/keys',run(async(req,res)=>{const id=z.string().uuid().parse(req.params.id);res.json((await pool.query(`select ${keyColumns} from integration_access.keys where connection_id=$1 order by created_at desc limit 200`,[id])).rows);}));
  admin.post('/connections/:id/keys',run(async(req,res)=>{
-  const id=z.string().uuid().parse(req.params.id);const data=z.object({name:z.string().trim().min(1).max(100),capabilities:z.array(capabilitySchema).min(1).max(7),expires_at:z.string().datetime(),reason:reasonSchema,rotate_key_id:z.string().uuid().optional()}).strict().parse(req.body);
+  const id=z.string().uuid().parse(req.params.id);const data=z.object({name:z.string().trim().min(1).max(100),capabilities:z.array(capabilitySchema).min(1).max(150),expires_at:z.string().datetime(),reason:reasonSchema,rotate_key_id:z.string().uuid().optional()}).strict().parse(req.body);
   const expiry=Date.parse(data.expires_at);if(expiry<=Date.now()||expiry>Date.now()+366*86400000)throw fail(400,'Hạn khóa phải ở tương lai, tối đa 366 ngày.');
   const secret='jf_agent_'+randomBytes(32).toString('base64url');
   const key=await transaction(async client=>{
    const conn=(await client.query('select * from integration_access.connections where id=$1 for update',[id])).rows[0];if(!conn||!conn.active)throw fail(400,'Kết nối không hoạt động.');
-   const grants=effective((await client.query('select capability,resource_ids,secondary_ids,contact_access from integration_access.grants where connection_id=$1',[id])).rows as IntegrationGrant[]).map(c=>c.id);
-   if(data.capabilities.some(c=>!grants.includes(c)))throw fail(400,'Khóa chỉ nhận quyền đã cấp với phạm vi cụ thể.');
+   const grants=effective((await client.query('select capability,resource_ids,secondary_ids,contact_access,all_resources from integration_access.grants where connection_id=$1',[id])).rows as IntegrationGrant[]).map(c=>c.id);
+   if(data.capabilities.some(c=>!grants.some(g=>g===c)))throw fail(400,'Khóa chỉ nhận quyền đã cấp với phạm vi cụ thể.');
    if(data.rotate_key_id){const old=await client.query('update integration_access.keys set revoked_at=now() where id=$1 and connection_id=$2 and revoked_at is null returning id',[data.rotate_key_id,id]);if(!old.rows[0])throw fail(409,'Khóa cũ không còn hoạt động.');}
    const row=(await client.query(`insert into integration_access.keys(connection_id,name,prefix,token_hash,capabilities,expires_at,created_by) values($1,$2,$3,$4,$5,$6,$7) returning ${keyColumns}`,[id,data.name,secret.slice(0,17),hash(secret),[...new Set(data.capabilities)],data.expires_at,res.locals.integrationAdmin])).rows[0];
    await audit(client,res.locals.integrationAdmin,data.rotate_key_id?'key.rotate':'key.create','OK',id,row.id,data.reason);return row;
@@ -120,6 +128,39 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
  admin.get('/logs',run(async(req,res)=>{
   const input=z.object({connection_id:z.string().uuid().optional(),offset:z.coerce.number().int().min(0).max(10000).default(0)}).strict().parse(req.query);
   res.json((await pool.query('select id,request_id,connection_id,key_id,actor_id,action,outcome,reason,created_at from integration_access.audit where ($1::uuid is null or connection_id=$1) order by created_at desc limit 100 offset $2',[input.connection_id||null,input.offset])).rows);
+ }));
+ admin.get('/connections/:id/execution',run(async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id);
+  const row=(await pool.query("select s.user_id,s.actor_label,c.policy_version from integration_access.connections c left join integration_access.service_identities s on s.connection_id=c.id where c.id=$1",[id])).rows[0];
+  if(!row)throw fail(404,'Không tìm thấy kết nối.');
+  const role=row.user_id?(await pool.query('select role from local_user_roles where user_id=$1 and is_active',[row.user_id])).rows[0]?.role:null;
+  const permissions=row.user_id?(await pool.query('select permission_type,enabled from local_employee_permissions where user_id=$1 order by permission_type',[row.user_id])).rows:[];
+  res.json({...row,configured:Boolean(row.user_id),role:role||null,permissions});
+ }));
+ admin.put('/connections/:id/execution',run(async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id);
+  const data=z.object({version:z.number().int().positive(),role:z.enum(['admin','manager','accountant','employee','team_leader']),permissions:z.array(z.object({permission_type:z.string(),enabled:z.boolean()}).strict()).max(150),reason:reasonSchema}).strict().parse(req.body);
+  validatePermissionChanges(data.permissions);
+  const result=await transaction(async client=>{
+   const connection=(await client.query('select id,policy_version from integration_access.connections where id=$1 for update',[id])).rows[0];
+   if(!connection||connection.policy_version!==data.version)throw fail(409,'Kết nối đã thay đổi. Hãy tải lại.');
+   let marker=(await client.query('select user_id,actor_label from integration_access.service_identities where connection_id=$1',[id])).rows[0];
+   if(!marker){const userId=randomUUID(),actorLabel='agent:'+id;
+    await client.query("insert into local_user_profiles(id,user_id,email,first_name,is_active,password_hash,is_snapshot_record,local_modified_at) values($1,$1,$2,$3,true,null,false,now())",[userId,'agent-'+id+'@integration.invalid',actorLabel]);
+    marker=(await client.query('insert into integration_access.service_identities(connection_id,user_id,actor_label,configured_by) values($1,$2,$3,$4) returning user_id,actor_label',[id,userId,actorLabel,res.locals.integrationAdmin])).rows[0];
+   }
+   await client.query('select user_id from local_user_profiles where user_id=$1 for update',[marker.user_id]);
+   await client.query("select set_config('integration_access.configuring_connection',$1,true)",[id]);
+   await client.query('update local_user_roles set is_active=false,updated_at=now(),local_modified_at=now() where user_id=$1',[marker.user_id]);
+   // Deliberately no assigned_by: service identity must never inherit its creator's ownership.
+   await client.query("insert into local_user_roles(user_id,role,is_active,is_snapshot_record,local_modified_at) values($1,$2,true,false,now()) on conflict(user_id,role) do update set is_active=true,assigned_by=null,updated_at=now(),local_modified_at=now()",[marker.user_id,data.role]);
+   await client.query('delete from local_employee_permissions where user_id=$1',[marker.user_id]);
+   for(const permission of data.permissions)await client.query("insert into local_employee_permissions(user_id,permission_type,enabled,reason,is_snapshot_record,local_modified_at) values($1,$2,$3,$4,false,now())",[marker.user_id,permission.permission_type,permission.enabled,data.reason]);
+   await client.query('update integration_access.service_identities set configured_by=$2,updated_at=now() where connection_id=$1',[id,res.locals.integrationAdmin]);
+   const updated=(await client.query('update integration_access.connections set policy_version=policy_version+1,updated_at=now() where id=$1 returning policy_version',[id])).rows[0];
+   await audit(client,res.locals.integrationAdmin,'execution.configure','OK',id,null,data.reason,undefined,{role:data.role,permission_count:data.permissions.length});
+   return {...marker,...updated,configured:true,role:data.role,permissions:data.permissions};
+  });res.json(result);
  }));
  admin.use((_req,res)=>res.status(404).json({message:'API quản trị kết nối không tồn tại.'}));
  app.use('/api/integration-access',admin);
@@ -164,7 +205,7 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
   const conn=(await client.query('select id from integration_access.connections where id=$1 and active for share',[principal.connection_id])).rows[0];
   const key=(await client.query('select capabilities from integration_access.keys where id=$1 and token_hash=$2 and revoked_at is null and expires_at>now()',[principal.key_id,principal.token_hash])).rows[0];
   if(!conn||!key)throw fail(401,'Khóa không còn hiệu lực.');
-  const grants=(await client.query('select capability,resource_ids,secondary_ids,contact_access from integration_access.grants where connection_id=$1 and capability=any($2::text[])',[principal.connection_id,key.capabilities])).rows as IntegrationGrant[];
+  const grants=(await client.query('select capability,resource_ids,secondary_ids,contact_access,all_resources from integration_access.grants where connection_id=$1 and capability=any($2::text[])',[principal.connection_id,key.capabilities])).rows as IntegrationGrant[];
   const result=await task(client,grants);await client.query('update integration_access.keys set last_used_at=now() where id=$1',[principal.key_id]);await audit(client,'agent:'+principal.connection_id,action,'OK',principal.connection_id,principal.key_id,undefined,principal.request_id);return result;
  },principal.work.assertAlive).catch(async error=>{if(!principal.work.aborted)await audit(pool,'agent:'+principal.connection_id,action,'DENIED',principal.connection_id,principal.key_id,undefined,principal.request_id);throw error;});}
  finally{principal.work.pending--;principal.work.settle();}
@@ -192,7 +233,9 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
    return result;
   });
  };
+ const business=registerIntegrationBusiness({pool,withPrincipal,effective,dispatch:createIntegrationInternalDispatcher(app)});
  const api=express.Router();api.use(machineGuard);
+ api.get('/artifacts/:id',run(async(req,res)=>{const row=await business.artifact((req as MachineRequest).integration!,String(req.params.id));res.setHeader('Content-Type',row.content_type);res.setHeader('Content-Disposition',"attachment; filename=\"export.bin\"; filename*=UTF-8''"+encodeURIComponent(row.filename));res.send(row.content);}));
  api.get('/me',run(async(req,res)=>res.json(await withPrincipal((req as MachineRequest).integration!,'identity.read',async(_client,grants)=>({connection_id:(req as MachineRequest).integration!.connection_id,capabilities:effective(grants).map(c=>c.id)})))));
  api.get('/capabilities',run(async(req,res)=>res.json(await withPrincipal((req as MachineRequest).integration!,'capabilities.read',async(_client,grants)=>effective(grants)))));
  for(const definition of integrationCatalog){api.get('/'+definition.path,run(async(req,res)=>res.json(await read((req as MachineRequest).integration!,definition.id,req.query))));api.get('/'+definition.path+'/:id',run(async(req,res)=>res.json(await read((req as MachineRequest).integration!,definition.id,{...req.query,id:req.params.id}))));}
@@ -207,10 +250,11 @@ export function registerIntegrationAccess(app: express.Express, pool: Pool, reso
   await audit(pool,'agent:'+principal.connection_id,'mcp.request','RECEIVED',principal.connection_id,principal.key_id,undefined,principal.request_id);
   const server=new Server({name:'joliefam-crm',version:'1.0.0'},{capabilities:{tools:{}}});
   const trackTool=async<T>(handler:()=>Promise<T>):Promise<T>=>{principal.work.pending++;try{principal.work.assertAlive();return await handler();}finally{principal.work.pending--;principal.work.settle();}};
-  server.setRequestHandler(ListToolsRequestSchema,async()=>trackTool(()=>withPrincipal(principal,'mcp.tools.list',async(_client,grants)=>({tools:effective(grants).map(c=>({name:c.tool,description:c.label+' — chỉ đọc trong phạm vi được cấp',annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},inputSchema:{type:'object' as const,properties:{id:{type:'string'},search:{type:'string',maxLength:100},offset:{type:'integer',minimum:0,maximum:10000},limit:{type:'integer',minimum:1,maximum:100},from:{type:'string',description:'Ngày bắt đầu YYYY-MM-DD (chấm công)'},to:{type:'string',description:'Ngày kết thúc YYYY-MM-DD (chấm công)'}},...(c.id==='attendance.read'?{required:['from','to']}:{}),additionalProperties:false}}))}))));
+  server.setRequestHandler(ListToolsRequestSchema,async()=>trackTool(()=>withPrincipal(principal,'mcp.tools.list',async(_client,grants)=>({tools:[...effective(grants).filter(c=>!c.id.startsWith('business.')).map(c=>({name:c.tool,description:c.label+' — chỉ đọc trong phạm vi được cấp',annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},inputSchema:{type:'object' as const,properties:{id:{type:'string'},search:{type:'string',maxLength:100},offset:{type:'integer',minimum:0,maximum:10000},limit:{type:'integer',minimum:1,maximum:100},from:{type:'string',description:'Ngày bắt đầu YYYY-MM-DD (chấm công)'},to:{type:'string',description:'Ngày kết thúc YYYY-MM-DD (chấm công)'}},...(c.id==='attendance.read'?{required:['from','to']}:{}),additionalProperties:false}})),...(await business.list(principal,grants)).map(businessToolSchema)]}))));
   server.setRequestHandler(CallToolRequestSchema,async request=>trackTool(async()=>{
    const definition=integrationCatalog.find(c=>c.tool===request.params.name);
-   try{if(!definition)throw fail(403,'Công cụ không được hỗ trợ.');const result=await read(principal,definition.id,request.params.arguments||{});return {content:[{type:'text' as const,text:JSON.stringify(result)}],structuredContent:result};}
+   const businessDefinition=integrationBusinessTools.find(c=>c.name===request.params.name);
+   try{if(businessDefinition){const result=await business.call(principal,businessDefinition,businessInputSchema.parse(request.params.arguments||{}));return {isError:result.status>=400,content:[{type:'text' as const,text:JSON.stringify(result)}],structuredContent:result};}if(!definition)throw fail(403,'Công cụ không được hỗ trợ.');const result=await read(principal,definition.id,request.params.arguments||{});return {content:[{type:'text' as const,text:JSON.stringify(result)}],structuredContent:result};}
    catch(error){if(!definition)await audit(pool,'agent:'+principal.connection_id,'mcp.tool.unsupported','DENIED',principal.connection_id,principal.key_id,undefined,principal.request_id);return {isError:true,content:[{type:'text' as const,text:error instanceof z.ZodError?'Tham số công cụ không hợp lệ.':Number((error as {status?:number}).status||500)===500?'Không thể truy vấn dữ liệu.':(error as Error).message}]};}
   }));
   const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});

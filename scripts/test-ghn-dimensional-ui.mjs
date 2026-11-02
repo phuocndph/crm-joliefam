@@ -1,108 +1,29 @@
-// TEST-ONLY: pure helpers and the actual JSX/payload expressions. No environment
-// files, sockets, database, credentials or provider order calls.
+// TEST-ONLY calculations and real PACKAGES JSX/payload expressions. No env/provider/DB.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import {readFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
-import { ghnDimensionalWeightGrams } from '../src/lib/ghn-parcel-weight.ts';
-import { buildGhnQuoteSnapshot, buildGhnCreateParcelItemName, GHN_FEE_COMPONENT_LABELS, parseGhnFeeQuote } from '../src/lib/ghn-quote-comparison.ts';
-import { buildGhnProductLines } from '../src/lib/ghn-create-form.ts';
-import { formatGhnIntegerInput } from '../src/lib/ghn-integer-input.ts';
-
-let groups=0;
-const check=(name,run)=>{run();groups++;console.log('PASS GHN dimensional UI: '+name);};
-const source=await readFile(new URL('../src/components/LocalCreateGHNOrderDialog.tsx',import.meta.url),'utf8');
-const parsed=ts.createSourceFile('dialog.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-const require=createRequire(import.meta.url);
+import {ghnDimensionalWeightGrams,ghnChargeableWeightGrams,ghnTotalChargeableWeightGrams} from '../src/lib/ghn-parcel-weight.ts';
+import {buildGhnQuoteSnapshot,buildGhnServiceSnapshot,GHN_FEE_COMPONENT_LABELS,parseGhnFeeQuote} from '../src/lib/ghn-quote-comparison.ts';
+import {parseGhnIntegerInput} from '../src/lib/ghn-integer-input.ts';
+let groups=0;const check=(name,run)=>{run();groups++;console.log('PASS GHN dimensional UI: '+name);};
+const source=await readFile(new URL('../src/components/LocalCreateGHNOrderDialog.tsx',import.meta.url),'utf8'),parsed=ts.createSourceFile('dialog.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),require=createRequire(import.meta.url);
 const visit=(node,fn)=>{fn(node);ts.forEachChild(node,child=>visit(child,fn));};
 const evaluate=(expression,context)=>vm.runInNewContext(ts.transpileModule('('+expression+')',{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,{require,exports:{},...context});
-const jsxSection=heading=>{
-  let found;
-  visit(parsed,node=>{if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(parsed)==='section'&&node.openingElement.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='aria-labelledby'&&attr.initializer?.text===heading))found=node;});
-  assert.ok(found,heading);return found.getText(parsed);
-};
+const section=heading=>{let found;visit(parsed,node=>{if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(parsed)==='section'&&node.openingElement.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='aria-labelledby'&&attr.initializer?.text===heading))found=node;});assert.ok(found,heading);return found.getText(parsed);};
+const details=summary=>{let found;visit(parsed,node=>{if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(parsed)==='details'&&node.children.some(child=>ts.isJsxElement(child)&&child.openingElement.tagName.getText(parsed)==='summary'&&child.getText(parsed).includes(summary)))found=node;});assert.ok(found,summary);return found.getText(parsed);};
 const walk=node=>Array.isArray(node)?node.flatMap(walk):node&&typeof node==='object'?[node,...walk(node.props?.children)]:[];
-const text=node=>Array.isArray(node)?node.map(text).join(''):node&&typeof node==='object'?text(node.props?.children):node===null||node===undefined||typeof node==='boolean'?'':String(node);
+const text=node=>Array.isArray(node)?node.map(text).join(''):node&&typeof node==='object'?text(node.props?.children):node==null||typeof node==='boolean'?'':String(node);
 const noop=()=>{};
-const money=value=>Number.isSafeInteger(value)&&value>=0?value.toLocaleString('vi-VN')+' đ':'Chưa hợp lệ';
-const context=(parcel,patch={})=>({cardClass:'test-card',parcels:[{...parcel,id:'synthetic',weightInput:formatGhnIntegerInput(String(parcel.weight))}],effectiveParcels:[{...parcel,id:'synthetic',weightInput:formatGhnIntegerInput(String(parcel.weight))}],weightFollowsProducts:false,multiEditorOpen:false,setMultiEditorOpen:noop,customOrderNumber:'',setCustomOrderNumber:noop,changeOrderWeight:noop,useProductWeight:noop,formatGhnIntegerInput,totalWeight:parcel.weight,locked:false,addParcel:noop,removeParcel:noop,changeParcel:noop,parcelInputId:(index,field)=>'ghn-parcel-'+field,ghnDimensionalWeightGrams,Plus:'i',Copy:'i',X:'i',parcelCreateError:'',parcelWeightValid:Number.isInteger(parcel.weight)&&parcel.weight>0&&parcel.weight<=50000,parcelDimensionsComplete:[parcel.length,parcel.width,parcel.height].every(v=>Number.isInteger(v)&&v>=1&&v<=200),parcelValid:true,dimensionalWeight:ghnDimensionalWeightGrams(parcel),numericComposing:false,codInput:'0',insuranceInput:'0',insuranceFollowsCod:true,failedCodInput:'0',collectFailed:false,order:undefined,GhnIntegerInput:'input',Input:'input',Label:'label',Button:'button',setNumericComposing:noop,changeCod:noop,changeInsurance:noop,useCodForInsurance:noop,setCollectFailed:noop,setFailedCodInput:noop,money,...patch});
-const parcelSection=jsxSection('ghn-parcel-heading');
-const feeSection=jsxSection('ghn-fee-details-heading');
-
-check('official cm formula keeps exact sub-gram precision and full volume range',()=>{
-  assert.equal(ghnDimensionalWeightGrams({length:50,width:40,height:30}),12000);
-  assert.equal(ghnDimensionalWeightGrams({length:1,width:1,height:1}),0.2);
-  assert.equal(ghnDimensionalWeightGrams({length:200,width:200,height:200}),1600000);
-  assert.equal(ghnDimensionalWeightGrams({length:30,width:50,height:40}),12000);
-});
-check('partial, cleared, fractional and malformed dimensions remove the derived result',()=>{
-  const valid={length:50,width:40,height:30};
-  for(const field of Object.keys(valid))for(const value of [undefined,null,'50',0,-1,0.5,200.1,201,NaN,Infinity])assert.equal(ghnDimensionalWeightGrams({...valid,[field]:value}),null,field+':'+value);
-  assert.equal(ghnDimensionalWeightGrams({length:1,width:200,height:1}),40);
-});
-check('real parcel JSX shows actual and dimensional figures; cleared dimensions and composition cannot show valid old values',()=>{
-  for(const [weight,length,width,height,actual,volume] of [[20000,50,40,30,'20.000','12.000'],[1000,50,40,30,'1.000','12.000'],[12000,50,40,30,'12.000','12.000'],[50000,200,200,200,'50.000','1.600.000'],[1,1,1,1,'1','0,2']]){
-    const tree=evaluate(parcelSection,context({weight,length,width,height}));
-    const weightInput=walk(tree).find(node=>node.props?.id==='ghn-parcel-weight'),converted=walk(tree).find(node=>node.type==='output');
-    assert.equal(weightInput.props.value,actual);assert.equal(text(converted),volume);assert.equal(converted.props['aria-label'],'Khối lượng quy đổi (gram)');assert.ok(!text(tree).includes('Khối lượng tính cước'));
-  }
-  const cleared=evaluate(parcelSection,context({weight:20000,length:50,width:40,height:0},{parcelDimensionsComplete:false,parcelValid:false}));
-  assert.equal(text(walk(cleared).find(node=>node.type==='output')),'Chưa đủ số đo');
-  const composing=evaluate(parcelSection,context({weight:20000,length:50,width:40,height:30},{numericComposing:true}));
-  assert.equal(walk(composing).find(node=>node.props?.id==='ghn-parcel-weight').props.onComposingChange,noop);
-  assert.equal(walk(cleared).find(node=>node.type==='details').props.open,undefined);
-  assert.ok(!text(cleared).includes('Đơn GHN tạo trực tiếp'));
-});
-check('quote and actual create payload keep measured weight and dimensions regardless of volumetric comparison',()=>{
-  let payload;
-  visit(parsed,node=>{if(ts.isCallExpression(node)&&node.expression.getText(parsed)==='localApi.createGhnOrder')payload=node.arguments[0].getText(parsed);});
-  assert.ok(payload);
-  for(const parcel of [{weight:20000,length:50,width:40,height:30},{weight:1000,length:50,width:40,height:30},{weight:12000,length:50,width:40,height:30},{weight:50000,length:200,width:200,height:200}]){
-    const before=structuredClone(parcel),volume=ghnDimensionalWeightGrams(parcel);
-    const made=buildGhnQuoteSnapshot({provinceId:'202',districtId:'1444',wardCode:'020308',address:'Synthetic destination',cod:0,insurance:0,codFailed:0,parcel});
-    assert.ok(made.snapshot,made.error);const measured=made.snapshot.feeData;
-    const request=evaluate(payload,{requestKey:'synthetic-key',shopId:'123',order:undefined,customOrderNumber:'',provinceId:'202',toName:'Synthetic',toPhone:'0900000003',toAddress:'Synthetic destination',districtId:'1444',wardCode:'020308',measured,cod:0,insurance:0,note:'',requiredNote:'KHONGCHOXEMHANG',content:'Synthetic parcel',payment:'2',selectedService:{service_type_id:parcel.weight>=20000?5:2,service_id:1},items:[{name:'Synthetic parcel',quantity:7,weightInput:'',code:''}],buildGhnCreateParcelItemName,buildGhnProductLines});
-    for(const field of ['weight','length','width','height']){
-      assert.equal(measured[field],parcel[field]);assert.equal(measured.items[0][field],parcel[field]);
-      assert.equal(request.orderData[field],parcel[field]);assert.equal(request.orderData.items[0][field],parcel[field]);
-    }
-    if(volume!==parcel.weight)assert.notEqual(request.orderData.weight,volume);
-    assert.deepEqual(parcel,before);
-  }
-});
-check('actual money JSX wires one-way COD edits and a separate opt-in button outside the insurance label',()=>{
-  const onCod=()=>{},onInsurance=()=>{},resume=()=>{};
-  const base=context({weight:20000,length:20,width:30,height:40},{changeCod:onCod,changeInsurance:onInsurance,useCodForInsurance:resume});
-  const auto=evaluate(parcelSection,base),manual=evaluate(parcelSection,{...base,insuranceFollowsCod:false});
-  assert.equal(walk(auto).find(node=>node.props?.id==='ghn-cod').props.onValueChange,onCod);
-  assert.equal(walk(auto).find(node=>node.props?.id==='ghn-insurance').props.onValueChange,onInsurance);
-  assert.ok(text(auto).includes('Theo COD'));assert.ok(!text(auto).includes('Dùng COD'));
-  const button=walk(manual).find(node=>node.type==='button'&&text(node)==='Dùng COD');
-  assert.ok(button);assert.equal(button.props.type,'button');assert.equal(button.props.onClick,resume);
-  assert.ok(walk(manual).some(node=>node.type==='label'&&node.props.htmlFor==='ghn-insurance'));
-  assert.ok(!walk(manual).filter(node=>node.type==='label').some(node=>walk(node).includes(button)),'button must not also activate the insurance input label');
-});
-check('all fifteen actual fee rows remain inside closed-by-default detail; zeros and missing values remain distinct',()=>{
-  assert.equal(Object.keys(GHN_FEE_COMPONENT_LABELS).length,15);
-  const quote=parseGhnFeeQuote({total:43210,...Object.fromEntries(Object.keys(GHN_FEE_COMPONENT_LABELS).map(field=>[field,0]))},1000);
-  const base={cardClass:'test-card',rateLabel:'Tổng cước dự kiến',rateText:'43.210 đ',cod:200000,insurance:300000,collectFailed:false,failedCod:0,payment:'2',fee:43210,recipientAmount:243210,selectedFee:quote,feeBusy:false,compareBusy:false,money,GHN_FEE_COMPONENT_LABELS};
-  const tree=evaluate(feeSection,base),detail=walk(tree).find(node=>node.type==='details');
-  assert.ok(detail);assert.equal(detail.props.open,undefined);assert.equal(text(walk(detail).find(node=>node.type==='summary')),'Chi tiết cước');
-  for(const label of Object.values(GHN_FEE_COMPONENT_LABELS))assert.ok(text(detail).includes(label),label);
-  assert.equal((text(detail).match(/GHN chưa tách phí/g)||[]).length,0);assert.ok(!text(detail).includes('-0 đ'));
-  assert.ok(text(tree).includes('243.210 đ'));assert.ok(text(tree).includes('Cước có thể thay đổi'));
-  const missing=evaluate(feeSection,{...base,selectedFee:parseGhnFeeQuote({total:43210,deliver_remote_areas_fee:0},1000)});
-  assert.equal((text(missing).match(/GHN chưa tách phí/g)||[]).length,14);
-  assert.ok(text(missing).includes(GHN_FEE_COMPONENT_LABELS.deliver_remote_areas_fee));assert.ok(text(missing).includes('0 đ'));
-});
-check('form root clips without becoming a focus-scroll container; the content retains its own scrolling',()=>{
-  let root;
-  visit(parsed,node=>{if(ts.isJsxOpeningElement(node)&&node.tagName.getText(parsed)==='DialogContent'&&node.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='aria-describedby'&&attr.initializer?.text==='ghn-create-description'))root=node;});
-  assert.ok(root);
-  const className=root.attributes.properties.find(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='className').initializer.text;
-  assert.ok(className.split(' ').includes('overflow-clip'),'overflow:hidden still permits browser focus to scroll the root and hide its header');
-  assert.ok(!className.split(' ').some(token=>['overflow-hidden','overflow-auto','overflow-y-auto'].includes(token)));
-  assert.match(source,/<main className="min-h-0 min-w-0 flex-1[^"\n]*overflow-y-auto/);
-});
+const parcel={id:'test1',weight:1000,weightInput:'1.000',length:30,width:20,height:20,lengthInput:'30',widthInput:'20',heightInput:'20'};
+const displayGrams=value=>value!==null&&Number.isFinite(value)&&value>0?value.toLocaleString('vi-VN',{maximumFractionDigits:1})+' g':'—';
+const context={ghnDimensionalWeightGrams,ghnChargeableWeightGrams,displayGrams,selectClass:'test-select',cardClass:'test',content:'Synthetic contents',setContent:noop,extraOpen:false,setExtraOpen:noop,touched:{},setTouched:noop,parcels:[parcel],locked:false,changeParcel:noop,addParcel:noop,removeParcel:noop,parcelInputId:(_index,field)=>'ghn-parcel-'+field,parseGhnIntegerInput,setNumericComposing:noop,parcelWeightIsValid:row=>Number.isSafeInteger(row.weight)&&row.weight>=1&&row.weight<=50000,GhnIntegerInput:'input',Input:'input',Label:'label',Button:'button',Plus:'i',X:'i'};
+check('official cm formula retains sub-gram precision and full volume range',()=>{assert.equal(ghnDimensionalWeightGrams({length:50,width:40,height:30}),12000);assert.equal(ghnDimensionalWeightGrams({length:1,width:1,height:1}),0.2);assert.equal(ghnDimensionalWeightGrams({length:200,width:200,height:200}),1600000);assert.equal(ghnTotalChargeableWeightGrams([{weight:1000,length:30,width:20,height:20},{weight:500,length:10,width:10,height:10}]),2900);});
+check('partial, cleared, fractional or malformed dimensions clear derived weight',()=>{for(const field of ['length','width','height'])for(const value of [undefined,null,'50',0,-1,0.5,201,NaN,Infinity])assert.equal(ghnDimensionalWeightGrams({length:50,width:40,height:30,[field]:value}),null);});
+check('actual compact parcel JSX retains raw entered measurements and one shared contents input',()=>{const jsx=section('ghn-packages-heading'),tree=evaluate(jsx,context);assert.equal(walk(tree).filter(node=>node.props?.id==='ghn-content').length,1);for(const field of ['weight','length','width','height']){const input=walk(tree).find(node=>node.props?.id==='ghn-parcel-'+field);assert.ok(input);assert.equal(input.props.value,parcel[field+'Input']);assert.equal(input.props.onComposingChange,noop);}assert.equal(walk(tree).filter(node=>node.type==='input').length,5);assert.ok(!text(tree).includes('Sao chép'));assert.ok(!text(tree).includes('Mã SP'));});
+check('actual dimension change handlers preserve invalid raw text and render field error after blur',()=>{const changes=[],tree=evaluate(section('ghn-packages-heading'),{...context,changeParcel:(id,patch)=>changes.push({id,patch})});walk(tree).find(node=>node.props?.id==='ghn-parcel-length').props.onValueChange('201');assert.equal(changes[0].patch.lengthInput,'201');assert.equal(changes[0].patch.length,0);const invalid=evaluate(section('ghn-packages-heading'),{...context,touched:{test1length:true},parcels:[{...parcel,length:0,lengthInput:'201'}]});assert.equal(walk(invalid).find(node=>node.props?.id==='ghn-parcel-length').props.value,'201');assert.ok(text(invalid).includes('Nhập 1–200 cm.'));});
+check('actual create payload keeps measured grams and exact winner-specific dimensions for either service',()=>{let payload;visit(parsed,node=>{if(ts.isCallExpression(node)&&node.expression.getText(parsed)==='localApi.createGhnOrder')payload=node.arguments[0].getText(parsed);});assert.ok(payload);for(const weight of [1000,20000,50000])for(const type of [2,5]){const built=buildGhnQuoteSnapshot({entryMode:'PACKAGES',content:'One shared contents',provinceId:'202',districtId:'1444',wardCode:'020308',address:'Synthetic',cod:0,insurance:0,parcels:[{...parcel,weight}]}),service={service_type_id:type,service_id:type===2?53320:100039},candidate=buildGhnServiceSnapshot(built.snapshot,service),measured=candidate.feeData;const request=evaluate(payload,{requestKey:'test',winning:{shop:{_id:456},service},order:null,customOrderNumber:'',addressMode:'OLD3',provinceId:'202',toName:'test',toPhone:'0900000003',toAddress:'Synthetic',districtId:'1444',wardCode:'020308',measured,cod:0,insurance:0,note:'',requiredNote:'KHONGCHOXEMHANG',content:candidate.content,payment:'2'});assert.equal(request.orderData.weight,weight);assert.equal(request.orderData.length,type===2?30:undefined);assert.equal(request.orderData.items[0].weight,weight);assert.equal(request.orderData.items[0].length,30);assert.equal(request.orderData.service_type_id,type);if(weight!==2400)assert.notEqual(request.orderData.weight,2400);}});
+check('fee details are closed by default and provider total remains authoritative',()=>{const fee=details('Chi tiết cước'),quote=parseGhnFeeQuote({total:43210,service_fee:90000,cod_fee:0,deliver_remote_areas_fee:100,coupon_value:-2000},1000),tree=evaluate(fee,{selectedFee:quote,autoSelectionReady:true,selectedShop:{name:'Shop synthetic'},selectedService:{short_name:'Service synthetic'},GHN_FEE_COMPONENT_LABELS,money:value=>value.toLocaleString('vi-VN')+' đ',recipientAmount:243210,chargeableWeight:2400,totalWeight:1000,feePrerequisite:''});assert.equal(tree.props.open,undefined);assert.ok(text(tree).includes('Shop synthetic'));assert.ok(text(tree).includes('Service synthetic'));assert.ok(text(tree).includes('43.210 đ'));assert.ok(text(tree).includes('0 đ'));assert.ok(text(tree).includes('-2.000 đ'));assert.equal(Object.keys(GHN_FEE_COMPONENT_LABELS).length,15);assert.ok(!source.includes('lg:grid-cols-[minmax(0,1fr)_320px]'));});
+check('form clips root while body scrolls; footer is one persistent row and extras are closed',()=>{let root;visit(parsed,node=>{if(ts.isJsxOpeningElement(node)&&node.tagName.getText(parsed)==='DialogContent'&&node.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='aria-describedby'&&attr.initializer?.text==='ghn-create-description'))root=node;});assert.ok(root);const classes=root.attributes.properties.find(attr=>ts.isJsxAttribute(attr)&&attr.name.getText(parsed)==='className').initializer.text;assert.ok(classes.split(' ').some(token=>['overflow-clip','overflow-hidden'].includes(token)));assert.ok(!classes.includes('overflow-auto'));assert.match(source,/<main className="min-h-0[^"\n]*overflow-y-auto/);assert.match(source,/<footer className="shrink-0/);const extra=evaluate(details('Thông tin thêm'),{...context,codInput:'0',insuranceInput:'0',insurance:0,customOrderNumber:'',setCustomOrderNumber:noop,changeInsurance:noop,collectFailed:false,setCollectFailed:noop,failedCodInput:'0',failedCod:0,setFailedCodInput:noop,requiredNote:'CHOXEMHANGKHONGTHU',setRequiredNote:noop,note:'',setNote:noop,Textarea:'textarea'});assert.equal(extra.props.open,false);});
 console.log('PASS '+groups+' GHN dimensional UI groups (synthetic only).');

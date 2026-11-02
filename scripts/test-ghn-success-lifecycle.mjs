@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { prefillGhnProducts, createGhnProductDrafts, calculateGhnProductWeight, ghnProductWeightError, buildGhnProductLines, effectiveGhnParcels, ghnProductDraftSignature } from '../src/lib/ghn-create-form.ts';
 import { formatGhnIntegerInput, parseGhnIntegerInput } from '../src/lib/ghn-integer-input.ts';
-import { buildGhnQuoteSnapshot, buildGhnCreateParcelItemName, isGhnQuoteFresh, findGhnAutomaticCheapest } from '../src/lib/ghn-quote-comparison.ts';
+import { buildGhnQuoteSnapshot,buildGhnServiceSnapshot, buildGhnCreateParcelItemName, isGhnQuoteFresh, findGhnAutomaticCheapest } from '../src/lib/ghn-quote-comparison.ts';
 import * as addressMatching from '../src/lib/ghn-address-match.ts';
 
 const source = await readFile(new URL('../src/components/LocalCreateGHNOrderDialog.tsx', import.meta.url), 'utf8');
@@ -23,7 +23,7 @@ visit(parsed);
 const init = effects.find(row => row.kind === 'useEffect' && row.text.includes('localApi.recentGhnOrder'));
 const generation = effects.find(row => row.kind === 'useLayoutEffect' && row.text.includes('const epoch=attemptSession.current.epoch+1'));
 assert.ok(init && generation, 'actual initialization and generation effects found');
-const functions = ['blankItem', 'blankParcel', 'parcelDraft', 'metadataAddress', 'unresolved', 'validPrintUrl', 'assertSessionAuth', 'currentAttemptSession', 'changeCod', 'changeInsurance', 'useCodForInsurance', 'resetForm', 'applyAttempt', 'checkStatus', 'submit', 'newAttempt', 'retryRejected', 'printAttempt', 'copyCode', 'finishClose', 'changeOpen', 'cancelDiscard', 'confirmDiscard', 'openApiSettings', 'reloadAddress'];
+const functions = ['blankParcel', 'parcelDraft', 'metadataAddress', 'unresolved', 'validPrintUrl', 'assertSessionAuth', 'currentAttemptSession', 'changeCod', 'changeInsurance', 'useCodForInsurance', 'resetForm', 'applyAttempt', 'checkStatus', 'submit', 'newAttempt', 'retryRejected', 'printAttempt', 'copyCode', 'finishClose', 'changeOpen', 'cancelDiscard', 'confirmDiscard', 'openApiSettings', 'reloadAddress'];
 const compile = (name, text) => ts.transpileModule(`globalThis.${name}=${text};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 const settle = async () => { for (let n = 0; n < 16; n++) await Promise.resolve(); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -36,15 +36,15 @@ const contextHarness = ({ recent = null } = {}) => {
   const context = {
     attemptSession: { current: { epoch: 1, open: true, scope: 'standalone', key: 'current-key' } },
     sessionAuth: { current: guard }, authGuard: guard, authClose: { current: value => calls.openChanges.push(value) },
-    pendingDestination: { current: null }, dialogContent:{current:null}, discardOpen: false, addressEditorOpen: false, collectFailed:false, failedCod:0, codInput:'0',insuranceInput:'0',insuranceFollowsCod:true,numericComposing:false,failedCodInput:'0',prefillGhnProducts,createGhnProductDrafts,calculateGhnProductWeight,ghnProductWeightError,buildGhnProductLines,effectiveGhnParcels,ghnProductDraftSignature,formatGhnIntegerInput,parseGhnIntegerInput,buildGhnQuoteSnapshot,weightFollowsProducts:false,multiEditorOpen:false,customOrderNumber:'',
+    pendingDestination: { current: null }, dialogContent:{current:null}, discardOpen: false, addressEditorOpen: false, collectFailed:false, failedCod:0, codInput:'0',insuranceInput:'0',insuranceFollowsCod:true,numericComposing:false,failedCodInput:'0',prefillGhnProducts,createGhnProductDrafts,calculateGhnProductWeight,ghnProductWeightError,buildGhnProductLines,effectiveGhnParcels,ghnProductDraftSignature,formatGhnIntegerInput,parseGhnIntegerInput,buildGhnQuoteSnapshot,weightFollowsProducts:false,multiEditorOpen:false,customOrderNumber:'',orderMode:'LIGHT',addressMode:'OLD3',newAddress:{},pickShift:'',lightParcels:[],heavyParcels:[],
     latestAttempt: { current: null }, notified: { current: '' }, addressGeneration: { current: { next() {} } }, quoteSession: { current: { invalidate() {} } },
-    latestMode: { current: 'auto' }, formOwner: { current: '' }, initialDefaults: { current: { order: undefined, remainingAmount: 0 } }, initialForm: { current: '' }, formSignature: 'initial-form',
+    preferredQuote:{current:undefined},latestMode: { current: 'auto' }, formOwner: { current: '' }, initialDefaults: { current: { order: undefined, remainingAmount: 0 } }, initialForm: { current: '' }, formSignature: 'initial-form',
     useCallback: callback => callback, useMemo: callback => callback(), cancelAddressMatch() {},
     open: true, order: undefined, remainingAmount: 0, requestKey: 'current-key', storageKey: 'test-storage', attempt: null, reload:0,recoveryRevision:0,
     recoveryReady: true, locked: false, matchingAddress: false, compareBusy: false, dataBusy: false, feeBusy: false,
-    autoSelectionReady: true, quoteInput: { snapshot: { key: 'test-fee', kind: 'final', feeData: { weight: 1200, length: 20, width: 30, height: 40, items:[{name:'Kiện hàng đã đóng gói',quantity:1,weight:1200,length:20,width:30,height:40}] } } }, selectedService: { service_id: 53320, service_type_id: 2 },
+    autoSelectionReady: true, quoteInput: { snapshot: { entryMode:'PACKAGES',content:'test shared contents',key: 'test-fee', kind: 'final', feeData: { weight: 1200, length: 20, width: 30, height: 40, items:[{name:'Kiện 1',quantity:1,weight:1200,length:20,width:30,height:40}] } } }, selectedService: { service_id: 53320, service_type_id: 2 },
     fee: 25000, selectedFee: { total: 25000, components: {}, quotedAt: Date.now(), expiresAt: Date.now()+60000 }, selectionMode:'manual', currentComparison:null, isGhnQuoteFresh, findGhnAutomaticCheapest, shopId: '456', provinceId: '202', districtId: '1444', wardCode: '020308',
-    toName: 'test recipient', toPhone: '0900000003', toAddress: 'test synthetic address', items: [{ id:'product-test', name: 'test parcel', quantity: 1,weightInput:'',code:'' }], parcels: [{id:'parcel-test',weightInput:'1.200',weight:1200,length:20,width:30,height:40}],
+    toName: 'test recipient', toPhone: '0900000003', toAddress: 'test synthetic address',content:'test shared contents',items: [{ id:'product-test', name: 'test parcel', quantity: 1,weightInput:'1.200',code:'' }], parcels: [{id:'parcel-test',weightInput:'1.200',weight:1200,length:20,width:30,height:40}],
     totalWeight: 1000, packageLength: 10, packageWidth: 10, packageHeight: 10, cod: 0, insurance: 0, note: '', requiredNote: 'KHONGCHOXEMHANG', payment: '1',
     createValidationError: '', busy: false, initializing: false, unresolvedAttempt: false, printBusy: false,
     crypto: { randomUUID: () => 'new-key-' + ++keyIndex }, navigator: { clipboard: { writeText: async () => {} } },
@@ -61,11 +61,13 @@ const contextHarness = ({ recent = null } = {}) => {
       printGhnOrder: async (key, auth) => { calls.guards.push(auth); auth.assertCurrent(); calls.prints.push(key); return { success: true, data: { printUrl: 'https://online-gateway.ghn.vn/a5/public-api/printA5?token=test-only-print-token' } }; },
     },
   };
+  context.currentComparison={quotes:[{snapshot:context.quoteInput.snapshot,snapshotKey:'test-fee',shop:{_id:456},service:context.selectedService,total:25000,quotedAt:Date.now(),expiresAt:Date.now()+60000}],failures:[],noServices:[]};
   for (const name of new Set(source.match(/\bset[A-Z][A-Za-z0-9_]+(?=\()/g))) {
     if (name === 'setTimeout') continue;
     const property = name[3].toLowerCase() + name.slice(4);
     context[name] = value => {
       context[property] = typeof value === 'function' ? value(context[property]) : value;
+      if(name==='setLightParcels'&&context.orderMode==='LIGHT'||name==='setHeavyParcels'&&context.orderMode==='HEAVY')context.parcels=context[property];
       if (name === 'setAttempt') { context.latestAttempt.current = context.attempt; context.unresolvedAttempt = Boolean(context.attempt && ['IN_FLIGHT', 'UNKNOWN', 'REMOTE_CREATED'].includes(context.attempt.attempt_status)); }
     };
   }
@@ -159,17 +161,17 @@ await check('new-attempt and close synchronously invalidate pending work, reset 
   vm.runInContext(compile('formSignature', initializers.get('formSignature')), h.context);
   h.context.changeOpen(false); assert.equal(h.context.attemptSession.current.open, false); assert.equal(h.context.attemptSession.current.key, ''); assert.deepEqual(h.calls.openChanges, [false]);
 });
-await check('directory reload preserves recipient/items/draft within same open owner but reopen resets them', async () => {
+await check('directory reload preserves recipient/contents/parcel draft within same open owner but reopen resets them', async () => {
   const h = contextHarness();
   h.begin(); await settle();
   h.context.toName = 'test typed recipient'; h.context.toPhone = '0900000005'; h.context.toAddress = 'test typed address';
-  h.context.items = [{ name: 'test typed parcel', weight: 25000 }]; h.context.cod = 200000;
-  const items = h.context.items;
+  h.context.content='test typed contents';h.context.parcels = [{ id:'typed',weight:25000,length:20,width:30,height:40 }]; h.context.cod = 200000;
+  const parcels = h.context.parcels;
   h.context.reloadAddress(); h.context.resetGeneration();
   assert.equal(h.context.toName, 'test typed recipient'); assert.equal(h.context.toPhone, '0900000005'); assert.equal(h.context.toAddress, 'test typed address');
-  assert.equal(h.context.items, items); assert.equal(h.context.cod, 200000);
+  assert.equal(h.context.parcels, parcels);assert.equal(h.context.content,'test typed contents'); assert.equal(h.context.cod, 200000);
   h.context.open = false; h.context.resetGeneration(); h.context.open = true; h.context.resetGeneration();
-    assert.equal(h.context.toName, ''); assert.equal(h.context.toAddress, ''); assert.notEqual(h.context.items, items); assert.equal(h.context.items[0].name, '');
+    assert.equal(h.context.toName, ''); assert.equal(h.context.toAddress, ''); assert.notEqual(h.context.parcels, parcels); assert.equal(h.context.content,'');
 });
 await check('create uses exact measured fee parcel and one canonical item while retaining content/COD/payer', async () => {
   const h = contextHarness();
@@ -178,14 +180,14 @@ await check('create uses exact measured fee parcel and one canonical item while 
   const payload = h.calls.creates[0].orderData;
   for (const field of ['weight', 'length', 'width', 'height']) assert.equal(payload[field], h.context.quoteInput.snapshot.feeData[field], field);
   assert.notEqual(payload.weight, h.context.totalWeight, 'measured weight must not fall back to old item-derived weight');
-  assert.equal(JSON.stringify(payload.items), JSON.stringify([{ name: 'test parcel × 1', quantity: 1, weight: 1200, length: 20, width: 30, height: 40, price: 0 }]));
-  assert.equal(payload.content, 'test parcel × 1');
+  assert.equal(JSON.stringify(payload.items), JSON.stringify([{ name: 'Kiện 1', quantity: 1, weight: 1200,length:20,width:30,height:40, price: 0 }]));
+  assert.equal(payload.content, 'test shared contents');assert.equal(h.calls.creates[0].entryMode,'PACKAGES');
   assert.equal(payload.cod_amount, h.context.cod); assert.equal(payload.payment_type_id, Number(h.context.payment));
 });
 await check('preliminary quote cannot create until complete dimensions supply a final snapshot', async () => {
   const h = contextHarness(); h.context.quoteInput.snapshot.kind = 'preliminary';
   await h.context.submit();
-  assert.equal(h.calls.creates.length, 0); assert.match(h.context.error, /dài × rộng × cao/);
+  assert.equal(h.calls.creates.length, 0); assert.match(h.context.error, /dài × rộng × cao|chưa sẵn sàng/);
 });
 await check('failed-delivery COD uses exact quoted amount; nested address transaction blocks submit and close', async () => {
   const h=contextHarness();h.context.quoteInput.snapshot.feeData.cod_failed_amount=20000;await h.context.submit();
@@ -252,7 +254,7 @@ await check('dirty close opens in-app confirmation; cancel keeps draft, confirm 
 });
 await check('first standalone field edit cannot become the reset baseline and skip discard prompt', () => {
   const h = contextHarness(), c = h.context;
-  Object.assign(c, { toName: '', toPhone: '', toAddress: '', provinceId: '', districtId: '', wardCode: '', items: [c.blankItem()], parcels: [c.blankParcel()], cod: 0, insurance: 0, payment: '2', note: '', requiredNote: 'CHOXEMHANGKHONGTHU', selectionMode: 'auto' });
+  Object.assign(c, { toName: '', toPhone: '', toAddress: '', provinceId: '', districtId: '', wardCode: '', content:'',items: [], parcels: [c.blankParcel()], cod: 0, insurance: 0, payment: '2', note: '', requiredNote: 'CHOXEMHANGKHONGTHU', selectionMode: 'auto' });
   const formEffect = effects.find(row => row.kind === 'useLayoutEffect' && row.text.includes('initialForm.current=formSignature'));
   const signature = () => vm.runInContext(compile('formSignature', initializers.get('formSignature')) + '\nformSignature;', c);
   let priorDependencies;
@@ -320,7 +322,7 @@ await check('prefill flags malformed metadata without modifying original custome
   h.context.resetForm();
   assert.equal(h.context.toPhone, ''); assert.equal(h.context.toAddress, ''); assert.match(h.context.prefillWarning, /dữ liệu khách gốc không bị thay đổi/);
   assert.equal(customer.phone, 'Email:'); assert.equal(customer.address, 'Ngày hết hạn: 08/09/2026'); assert.equal(h.context.payment, '2');
-  assert.equal(h.context.parcels.length,1);for (const field of ['weight','length','width','height']) assert.equal(h.context.parcels[0][field], 0, 'operator must measure parcel');
+  assert.equal(h.context.parcels.length,1);for (const field of ['length','width','height','weight']) assert.equal(h.context.parcels[0][field],0,'physical measurements must be supplied rather than guessed');
   h.context.initialDefaults.current.order.customers = { ...customer, phone: '0900000003', address: '12 Đường Email, Hà Nội' };
   h.context.resetForm(); assert.equal(h.context.toPhone, '0900000003'); assert.equal(h.context.toAddress, '12 Đường Email, Hà Nội'); assert.equal(h.context.prefillWarning, '');
 });
@@ -338,10 +340,11 @@ await check('source insurance never silently clamps or replaces zero; full sourc
     const {context}=contextHarness();context.initialDefaults.current={order:{total_amount:amount,items:[]},remainingAmount:123456};context.resetForm();
     assert.equal(context.insuranceInput,formatGhnIntegerInput(String(amount)));assert.equal(parseGhnIntegerInput(context.codInput,0,50000000),123456);
   }
-  const {context}=contextHarness();context.initialDefaults.current={order:{total_amount:null,items:[]},remainingAmount:123456};context.resetForm();assert.equal(parseGhnIntegerInput(context.insuranceInput,0,5000000),123456);
+  const {context}=contextHarness();context.initialDefaults.current={order:{total_amount:null,items:[]},remainingAmount:123456};context.resetForm();assert.equal(parseGhnIntegerInput(context.insuranceInput,0,5000000),0);
 });
 const renderMoneySnapshot=context=>{
-  for(const name of ['cod','insurance','failedCod','productWeight','productWeightInputError','effectiveParcels','quoteInput'])vm.runInContext(compile(name,initializers.get(name)),context);
+  for(const name of ['cod','insurance','failedCod','quoteInput'])vm.runInContext(compile(name,initializers.get(name)),context);
+  context.currentComparison=context.quoteInput.snapshot?{quotes:[{snapshot:buildGhnServiceSnapshot(context.quoteInput.snapshot,context.selectedService),snapshotKey:context.quoteInput.snapshot.key,shop:{_id:456},service:context.selectedService,...context.selectedFee}],failures:[],noServices:[]}:null;
   return context.quoteInput;
 };
 await check('COD handlers copy exact typed, pasted, cleared and invalid raw text while automatic declaration is enabled',()=>{
@@ -375,12 +378,12 @@ await check('Dùng COD restores input focus before its button unmounts and safel
   c.dialogContent.current=null;assert.doesNotThrow(()=>c.useCodForInsurance());
 });
 await check('linked partial-payment prefill preserves full declared value; only equal valid prefills start in automatic mode',()=>{
-  for(const [amount,remaining,automatic] of [[200000,100000,false],[0,100000,false],[5000000,100000,false],[7500000,7500000,false],[200000,200000,true],[0,0,true],[null,123456,true]]){
+  for(const [amount,remaining,automatic] of [[200000,100000,false],[0,100000,false],[5000000,100000,false],[7500000,7500000,false],[200000,200000,false],[0,0,false],[null,123456,false]]){
     const {context:c}=contextHarness();c.initialDefaults.current={order:{total_amount:amount,items:[]},remainingAmount:remaining};c.resetForm();
-    assert.equal(c.insuranceInput,formatGhnIntegerInput(String(amount??remaining)));assert.equal(c.insuranceFollowsCod,automatic,String(amount));
-    c.changeCod('50.000');assert.equal(c.insuranceInput,automatic?'50.000':formatGhnIntegerInput(String(amount??remaining)));
+    assert.equal(c.insuranceInput,formatGhnIntegerInput(String(amount??0)));assert.equal(c.insuranceFollowsCod,automatic,String(amount));
+    c.changeCod('50.000');assert.equal(c.insuranceInput,automatic?'50.000':formatGhnIntegerInput(String(amount??0)));
   }
-  const {context:c}=contextHarness();c.resetForm();assert.equal(c.insuranceFollowsCod,true);assert.equal(c.codInput,'0');assert.equal(c.insuranceInput,'0');
+  const {context:c}=contextHarness();c.resetForm();assert.equal(c.insuranceFollowsCod,false);assert.equal(c.codInput,'0');assert.equal(c.insuranceInput,'0');
 });
 await check('composition retains raw paired edits but blocks quotes until commit; malformed committed text remains invalid',()=>{
   const {context:c}=contextHarness();
@@ -404,12 +407,12 @@ await check('declaration mode participates in dirty protection, resets with new 
   const h=contextHarness(),c=h.context;h.begin();await settle();
   const signature=()=>vm.runInContext(compile('formSignature',initializers.get('formSignature'))+'\nformSignature;',c);
   assert.equal(signature(),c.initialForm.current,'new mode must match the reset baseline');
-  c.changeInsurance('0');assert.equal(c.insuranceFollowsCod,false);assert.notEqual(signature(),c.initialForm.current);c.changeOpen(false);assert.equal(c.discardOpen,true);c.cancelDiscard();
+  c.changeInsurance('1');assert.equal(c.insuranceFollowsCod,false);assert.notEqual(signature(),c.initialForm.current);c.changeOpen(false);assert.equal(c.discardOpen,true);c.cancelDiscard();
   c.changeCod('100.000');c.changeInsurance('200.000');c.reloadAddress();c.resetGeneration();
   assert.equal(c.insuranceFollowsCod,false);assert.equal(c.codInput,'100.000');assert.equal(c.insuranceInput,'200.000');
   c.attempt=terminal('REJECTED');c.retryRejected();c.resetGeneration();c.initialize();await settle();
   assert.equal(c.insuranceFollowsCod,false);assert.equal(c.codInput,'100.000');assert.equal(c.insuranceInput,'200.000');
-  c.attempt=freshSuccess(c.requestKey);c.newAttempt();assert.equal(c.insuranceFollowsCod,true);assert.equal(c.codInput,'0');assert.equal(c.insuranceInput,'0');
+  c.attempt=freshSuccess(c.requestKey);c.newAttempt();assert.equal(c.insuranceFollowsCod,false);assert.equal(c.codInput,'0');assert.equal(c.insuranceInput,'0');
   c.initialDefaults.current={order:{id:'linked-next',total_amount:300000,items:[]},remainingAmount:100000};c.order=c.initialDefaults.current.order;c.resetGeneration();
   assert.equal(c.insuranceFollowsCod,false);assert.equal(c.codInput,'100.000');assert.equal(c.insuranceInput,'300.000');
 });

@@ -4,6 +4,7 @@ import type {PoolClient} from 'pg';
 import {createHash,randomUUID} from 'node:crypto';
 import {pool} from './db/bootstrap.js';
 import {normalizeOrderLines,sameProductionLine} from './production-sales-workflow.js';
+import {validateProductionSewingDecision} from './production-sewing-decision.js';
 import {productSupplyClassificationState,productSupplySelection} from './product-fulfillment-classification.js';
 type Row=Record<string,any>;
 type DB=Pick<PoolClient,'query'>;
@@ -44,7 +45,7 @@ export function createOrderShipmentService(d:OrderShipmentDependencies){
   if(!uuid.test(String(input.output_id||input.purchase_plan_id)))fail('Nguồn hàng không hợp lệ.',400);
   const source=await normalizeOrderLines(db,sale);
   if(input.output_id){
-   const row=(await db.query(`select x.*,i.product_id,i.product_name,i.color,i.size,i.dimensions,i.source_order_item_key,i.sales_request_line_id,o.order_id,o.status production_status,o.workflow_generation,
+   const row=(await db.query(`select x.*,i.product_id,i.product_name,i.color,i.size,i.dimensions,i.fabric_variant_id,i.sewing_code_selection,i.source_order_item_key,i.sales_request_line_id,o.order_id,o.status production_status,o.workflow_generation,
     k.base_unit,k.is_active inventory_active,k.legacy_source_type,k.legacy_source_id,w.is_active warehouse_active,r.source_line_snapshot,r.ordered_quantity,
     coalesce((select sum(l.quantity) from local_production_shipment_lines l where l.output_id=x.id),0) used
     from local_production_outputs x join local_production_order_items i on i.id=x.order_item_id join local_production_orders o on o.id=x.production_order_id
@@ -59,7 +60,7 @@ export function createOrderShipmentService(d:OrderShipmentDependencies){
    const mapping=(await db.query('select inventory_item_id from local_production_product_inventory_maps where product_id=$1',[row.product_id])).rows[0];
    if(mapping&&String(mapping.inventory_item_id)!==String(row.inventory_item_id))fail('Ánh xạ mã thành phẩm đã đổi; cần đối soát trước khi xuất giao.');
    if(!mapping&&(!['products','product','PRODUCT'].includes(String(row.legacy_source_type||''))||String(row.legacy_source_id||'')!==String(row.product_id)))fail('Thành phẩm chưa có ánh xạ mã kho được xác nhận; cần đối soát trước khi xuất giao.');
-   await currentSupply(db,row.product_id,'SEW');
+   if(!await validateProductionSewingDecision(db,row))await currentSupply(db,row.product_id,'SEW');
    const available=(await db.query('select greatest($1::numeric-$2::numeric,0) quantity',[row.quantity_good,row.used])).rows[0].quantity;
    return {...row,output_id:row.id,purchase_plan_id:null,source_type:'SEW',source_line_key:row.source_order_item_key,current,available_quantity:String(available)};
   }

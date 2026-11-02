@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { GhnDirectorySearch } from './GhnDirectorySearch';
+import { GhnAddressModeSwitch } from './GhnAddressModeSwitch';
 import { createAddressGeneration, filterGhnDirectory, ghnAddressSuggestionQuery, matchDistrict, matchDistrictTail, matchProvince, matchProvinceTail, matchWard, matchWardTail, type AddressLevel, type GhnProvince, type GhnDistrict, type GhnWard } from '@/lib/ghn-address-match';
 
 export type GhnReceiverAddress = { address: string; provinceId: string; districtId: string; wardCode: string; districts: GhnDistrict[]; wards: GhnWard[] };
@@ -16,15 +17,17 @@ type Props = {
   read: <T>(action: string, body: Record<string, unknown>) => Promise<T>;
   onCancel: () => void;
   onCommit: (address: GhnReceiverAddress) => void;
+  onSwitchMode?: (draft:GhnReceiverAddress)=>void;
 };
 const message = (cause: unknown) => cause instanceof Error ? cause.message : 'Không tải được danh mục địa chỉ GHN.';
 
 /** Mounted only while editing. Nothing leaves this transaction before Done. */
-export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, onCommit }: Props) {
+export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, onCommit,onSwitchMode }: Props) {
   const [draft, setDraft] = useState<GhnReceiverAddress>(() => ({ ...initial }));
-  const [recognize, setRecognize] = useState(!initial.provinceId || !initial.districtId || !initial.wardCode);
+  const [recognize, setRecognize] = useState(onSwitchMode&&initial.provinceId?false:!initial.provinceId || !initial.districtId || !initial.wardCode);
   const [recognitionRevision, setRecognitionRevision] = useState(0);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const [restoreRetry,setRestoreRetry]=useState(0),[restoreFailed,setRestoreFailed]=useState(false);
   const [hints, setHints] = useState<Hints | null>(null);
   const [providerConfigured, setProviderConfigured] = useState<boolean | null>(null), [providerError, setProviderError] = useState('');
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]), [searchQuery, setSearchQuery] = useState('');
@@ -77,7 +80,7 @@ export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, o
   useEffect(() => {
     if (searchOpen) content.current?.querySelector<HTMLElement>(`[data-address-option="${searchIndex}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [searchIndex, searchOpen]);
-  const invalidate = () => { const token = generation.current.next(); setBusy(false); setRecognize(false); setError(''); setHints(null); setNotice(''); return token; };
+  const invalidate = () => { const token = generation.current.next(); setBusy(false); setRecognize(false); setError('');setRestoreFailed(false); setHints(null); setNotice(''); return token; };
   const cancel = () => { generation.current.next(); searchGeneration.current.next(); mounted.current = false; onCancel(); };
   const changeAddress = (address: string, lookup = true) => {
     closeSearch();
@@ -114,6 +117,34 @@ export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, o
   };
   const selectWard = (wardCode: string) => { closeSearch(); invalidate(); setDraft(previous => ({ ...previous, wardCode })); };
   const browse = () => { closeSearch(); if (recognize) invalidate(); };
+
+  // A mode switch can interrupt a directory request after its parent ID was
+  // selected. Restore that catalog without restarting address recognition.
+  const restoreEnabled=Boolean(onSwitchMode);
+  useEffect(()=>{
+    if(!restoreEnabled||!initial.provinceId)return;
+    const missingDistricts=!initial.districts.length;
+    const missingWards=Boolean(initial.districtId&&!initial.wards.length);
+    if(!missingDistricts&&!missingWards)return;
+    const token=generation.current.next();let active=true;
+    const fresh=()=>active&&current(token);
+    setBusy(true);setError('');setRestoreFailed(false);
+    void(async()=>{
+      const districts=missingDistricts?await read<GhnDistrict[]>('get_districts',{provinceId:Number(initial.provinceId)}):initial.districts;
+      if(!fresh())return;
+      const districtValid=Boolean(initial.districtId&&districts.some(row=>String(row.DistrictID)===initial.districtId));
+      setDraft(previous=>({...previous,districts,...(initial.districtId&&!districtValid?{districtId:'',wardCode:'',wards:[]}:{})}));
+      if(!districts.length){setError('GHN chưa có quận/huyện cho tỉnh đã chọn.');setRestoreFailed(true);return;}
+      if(initial.districtId&&!districtValid){setError('Quận/huyện đã chọn không còn trong danh mục. Vui lòng chọn lại.');return;}
+      if(!districtValid||!missingWards)return;
+      const wards=await read<GhnWard[]>('get_wards',{districtId:Number(initial.districtId)});
+      if(!fresh())return;
+      setDraft(previous=>({...previous,wards,wardCode:wards.some(row=>row.WardCode===initial.wardCode)?initial.wardCode:''}));
+      if(!wards.length){setError('GHN chưa có phường/xã cho quận đã chọn.');setRestoreFailed(true);}
+      else if(initial.wardCode&&!wards.some(row=>row.WardCode===initial.wardCode))setError('Phường/xã đã chọn không còn trong danh mục. Vui lòng chọn lại.');
+    })().catch(cause=>{if(fresh()){setError(message(cause));setRestoreFailed(true);}}).finally(()=>{if(fresh())setBusy(false);});
+    return()=>{active=false;};
+  },[restoreEnabled,initial.provinceId,initial.districtId,initial.wardCode,initial.districts,initial.wards,read,restoreRetry]);
 
   useEffect(() => {
     if (!recognize || composing || !draft.address.trim() || !provinces.length) return;
@@ -179,6 +210,8 @@ export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, o
     const active = content.current?.ownerDocument.activeElement;
     if (active && content.current?.contains(active) && active.matches('[data-ghn-directory-combobox="true"][aria-expanded="true"]')) event.preventDefault();
   }}><DialogHeader><DialogTitle>Địa chỉ nhận</DialogTitle></DialogHeader>
+    {onSwitchMode&&<GhnAddressModeSwitch mode="OLD3" onChange={mode=>{if(mode==='NEW2'){generation.current.next();searchGeneration.current.next();mounted.current=false;onSwitchMode({...draft});}}}/>}
+    {onSwitchMode&&!provinces.length&&<p role="status" className="text-xs text-muted-foreground">Chưa có danh mục địa chỉ cũ. Bạn có thể chuyển sang địa chỉ mới.</p>}
     <div className="space-y-5 rounded-xl border bg-muted/20 p-4 sm:p-5"><h3 className="font-semibold">Bên nhận</h3><div id="ghn-address-widget" className="space-y-2 border-t pt-4" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) closeSearch(); }}><Label htmlFor="ghn-street">Địa chỉ nhận *</Label><div id="ghn-address-anchor" className="relative"><Input ref={streetInput} autoFocus id="ghn-street" role="combobox" aria-autocomplete="list" autoComplete="off" aria-expanded={expanded} aria-controls={expanded ? 'ghn-address-options' : undefined} aria-activedescendant={expanded && suggestions[searchIndex] ? `ghn-address-option-${searchIndex}` : undefined} value={draft.address} maxLength={500} placeholder="Nhập số nhà, tên đường hoặc dán địa chỉ của khách…" aria-invalid={!streetValid} aria-describedby="ghn-address-dialog-help ghn-address-provider-status" onChange={event => changeAddress(event.target.value)} onFocus={reopenSearch} onClick={reopenSearch} onCompositionStart={() => { searchGeneration.current.next(); setComposing(true); }} onCompositionEnd={() => setComposing(false)} onKeyDown={event => {
       if (composing || event.nativeEvent.isComposing) return;
       if (event.key === 'Escape' && expanded) { event.preventDefault(); event.stopPropagation(); closeSearch(); return; }
@@ -199,7 +232,7 @@ export function GhnReceiverAddressDialog({ initial, provinces, read, onCancel, o
       <div role="status" aria-live="polite" className="text-sm text-muted-foreground">{busy && <Loader2 className="mr-2 inline h-4 w-4 animate-spin"/>}{notice}</div>
       {hints && hints.candidates.length > 0 && <div className="space-y-2 rounded-md border bg-background p-3" aria-label="Gợi ý danh mục GHN"><p className="text-xs text-muted-foreground">{hints.level === 'province' ? 'Tỉnh/thành GHN' : hints.level === 'district' ? 'Quận/huyện thuộc ' + hints.province?.ProvinceName : 'Phường/xã thuộc ' + hints.district?.DistrictName}</p><div className="flex max-h-36 flex-wrap gap-2 overflow-auto">{hints.candidates.slice(0, 12).map(row => <Button key={row.id} type="button" size="sm" variant="outline" onClick={() => applyHint(row.id)}>{row.label}</Button>)}</div>{hints.candidates.length > 12 && <p className="text-xs">Gõ thêm để thu hẹp {hints.candidates.length} kết quả.</p>}</div>}
       <div className="grid gap-4 sm:grid-cols-3"><div className="space-y-2"><Label htmlFor="ghn-province">Tỉnh - Thành phố *</Label><GhnDirectorySearch id="ghn-province" label="Tỉnh - Thành phố" value={draft.provinceId} options={provinces.map(row => ({ value: String(row.ProvinceID), label: row.ProvinceName, aliases: row.NameExtension }))} onSearch={browse} onChange={selectProvince}/></div><div className="space-y-2"><Label htmlFor="ghn-district">Quận - Huyện GHN *</Label><GhnDirectorySearch id="ghn-district" label="Quận - Huyện GHN" value={draft.districtId} parentKey={draft.provinceId} options={draft.districts.map(row => ({ value: String(row.DistrictID), label: row.DistrictName, aliases: row.NameExtension }))} loading={busy} disabled={!draft.provinceId} onSearch={browse} onChange={selectDistrict}/></div><div className="space-y-2"><Label htmlFor="ghn-ward">Phường - Xã GHN *</Label><GhnDirectorySearch id="ghn-ward" label="Phường - Xã GHN" value={draft.wardCode} parentKey={draft.districtId} options={draft.wards.map(row => ({ value: row.WardCode, label: row.WardName, aliases: row.NameExtension }))} loading={busy} disabled={!draft.districtId} onSearch={browse} onChange={selectWard}/></div></div>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{error}</p>{restoreFailed&&<Button type="button" size="sm" variant="outline" onClick={()=>setRestoreRetry(value=>value+1)}>Tải lại danh mục</Button>}</div>}
     </div><div className="flex justify-end gap-3 border-t pt-4"><Button type="button" variant="outline" onClick={cancel}>Hủy</Button><Button type="button" className="bg-orange-600 text-white hover:bg-orange-700" disabled={!valid || busy || composing} onClick={commit}>Xong</Button></div>
   </DialogContent></Dialog>;
 }

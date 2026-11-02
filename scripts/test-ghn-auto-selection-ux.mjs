@@ -148,17 +148,17 @@ await check('dialog Escape capture contract prevents only its own expanded GHN p
   reference.current=null;assert.doesNotThrow(()=>callback(event('Escape')),'unmounted dialog safe');
 });
 await check('static dialog wiring: auto default, all-shop comparison, intent guards and render-time create gating',()=>{
-  assert.match(dialog,/useState<'auto'\|'manual'>\('auto'\)/);
-  assert.match(dialog,/compareGhnShopQuotes\(session,shops,snapshot\)/);
-  assert.match(dialog,/selectionIntent\.current!==intent\|\|latestMode\.current!=='auto'/);
-  assert.match(dialog,/selectionIntent\.current\+\+;latestMode\.current=mode/);
+  assert.equal(dialog.includes("useState<'auto'|'manual'>"),false,'new form has no manual override');
+  assert.match(dialog,/compareGhnShopQuotes\(session,shops,snapshot,preferredQuote.current\)/);
+  assert.match(dialog,/selectionIntent\.current!==intent/);
+  assert.match(dialog,/entryMode:'PACKAGES'/);
   assert.match(dialog,/const currentComparison=comparison\?\.context===quoteContext&&comparison.data.quotes.every\(row=>isGhnQuoteFresh\(row\)\)\?comparison.data:null/);
-  assert.match(dialog,/const autoSelectionReady=selectionMode==='manual'\|\|Boolean\(automaticCheapest/);
+  assert.match(dialog,/const autoSelectionReady=Boolean\(automaticCheapest/);
   assert.match(dialog,/if\(!recoveryReady\|\|locked\|\|attempt\|\|matchingAddress\|\|compareBusy\|\|dataBusy\|\|feeBusy\|\|!autoSelectionReady/);
   assert.match(dialog,/const canCreate=!recoveryReady\|\|locked\|\|matchingAddress\|\|dataBusy\|\|feeBusy\|\|compareBusy\|\|!autoSelectionReady/);
   assert.match(dialog,/disabled=\{canCreate\}/);
   const refresh=dialog.slice(dialog.indexOf('const refreshQuote='),dialog.indexOf('const applyAttempt='));
-  assert.match(refresh,/selectionMode==='manual'&&\(!shopId\|\|!selectedService\)/);assert.match(refresh,/invalidate\(\)/);assert.match(refresh,/setQuoteRevision/);
+  assert.match(refresh,/invalidate\(\)/);assert.match(refresh,/setQuoteRevision/);
 });
 await check('static address/layout wiring uses one directory per level and parent-child clear, scroll body/fixed footer',()=>{
   const address=addressDialog;
@@ -166,7 +166,7 @@ await check('static address/layout wiring uses one directory per level and paren
   assert.match(dialog,/const selectProvince=[\s\S]*?setProvinceId\(value\);setDistrictId\(''\);setWardCode\(''\)/);
   assert.match(dialog,/const selectDistrict=[\s\S]*?setDistrictId\(value\);setWardCode\(''\)/);
   assert.match(address,/parentKey=\{draft.provinceId\}/);assert.match(address,/parentKey=\{draft.districtId\}/);
-  assert.match(dialog,/<main className="min-h-0 min-w-0 flex-1[^"\n]*overflow-y-auto/);assert.match(dialog,/shrink-0[^"\n]*border-t/);
-  assert.match(dialog,/flex min-h-0 flex-1 flex-col overflow-hidden lg:grid/,'mobile content and actions are sibling flex rows, not one shared long scroller');
+  assert.match(dialog,/<main className="min-h-0[^"\n]*overflow-y-auto/);assert.match(dialog,/shrink-0[^"\n]*border-t/);
+  assert.match(dialog,/<footer className="shrink-0/,'mobile content and actions are sibling rows, not one shared long scroller');
 });
 console.log('PASS '+count+' GHN auto-selection UX groups (pure/synthetic handlers + static wiring, not rendered browser interaction).');

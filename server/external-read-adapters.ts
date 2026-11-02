@@ -1,4 +1,6 @@
 import { readGhnNewDirectory } from './ghn-new-address.js';
+import {readGhnProviderJson} from './ghn-provider-json.js';
+import {ghnUnsupportedServiceResponse,ghnUnsupportedQuoteError} from './ghn-quote-error.js';
 import { GoongAddressAdapter, goongEnvironment, goongPublicStatus, type GoongRuntimeConfig } from './goong-address-adapter.js';
 
 type Body = Record<string, any>;
@@ -112,10 +114,11 @@ export class ExternalReadAdapters {
     }
     throw failure('Danh sách cửa hàng GHN vượt giới hạn trang. Cần kiểm tra tài khoản GHN.',502);
   }
-  async shops(config: GhnRuntimeConfig) {
+  async shops(config: GhnRuntimeConfig, requireComplete=false) {
     const allowed = config.shops.map(value => String(positiveShop(value)));
     if (!config.configured || !config.token || !allowed.includes(config.primaryShop)) throw failure('GHN chưa được cấu hình hoặc đã tắt.', 503);
     const found = (await this.discoverShops(config.token,config.primaryShop)).filter(row=>allowed.includes(String(row._id)));
+    if(requireComplete&&allowed.some(id=>!found.some(row=>String(row._id)===id)))throw failure('Chưa xác minh đủ cửa hàng GHN đã cấu hình. Kiểm tra cấu hình rồi thử lại.',502);
     if (!found.length) throw failure('Không tìm thấy cửa hàng GHN được phép. Kiểm tra khóa và danh sách shop trong Cài đặt API.', 502);
     return found.sort((a,b) => Number(String(b._id) === config.primaryShop) - Number(String(a._id) === config.primaryShop));
   }
@@ -148,13 +151,22 @@ export class ExternalReadAdapters {
     if (action === 'address_autocomplete_status') return { success: true, data: await this.goong.status(), source: 'goong' };
     if (action === 'address_autocomplete') return { success: true, data: await this.goong.autocomplete(body.input, actor), source: 'goong' };
     if (action === 'get_new_provinces' || action === 'get_new_wards') { const config = runtimeConfig || await this.snapshot(); return {success:true,data:await readGhnNewDirectory(config,this.fetcher,action === 'get_new_wards' ? positive(body.provinceId,'Tỉnh mới') : undefined)}; }
-    const supported = ['get_provinces', 'get_districts', 'get_wards', 'get_shops', 'get_services', 'calculate_fee', 'track', 'track_order', 'get_order_detail'];
+    const supported = ['get_provinces', 'get_districts', 'get_wards', 'get_shops', 'get_services', 'get_pick_shifts', 'calculate_fee', 'track', 'track_order', 'get_order_detail'];
     if (!supported.includes(action)) return { success: false, error: 'Thao tác này chưa được hỗ trợ an toàn trên VPS. Chưa gửi hoặc thay đổi vận đơn GHN.', mode: 'read_only' };
     const config = runtimeConfig || await this.snapshot();
     const token = config.token, shops = config.shops;
     let shop = config.primaryShop;
     if (!config.configured || !token || !shop || !shops.length) return { success: false, error: 'Chưa cấu hình GHN hợp lệ.', mode: 'unconfigured' };
-    if (action === 'get_shops') return { success: true, data: await this.shops(config), local_only: false, source: 'ghn' };
+    if (action === 'get_shops') {
+      if(body.entryMode!==undefined&&body.entryMode!=='PACKAGES')throw failure('Kiểu nhập kiện không hợp lệ.');
+      return { success: true, data: await this.shops(config,body.entryMode==='PACKAGES'), local_only: false, source: 'ghn' };
+    }
+    if(action==='get_pick_shifts'){
+      const response=await requestJson('https://online-gateway.ghn.vn/shiip/public-api/v2/shift/date',{method:'GET',headers:{Token:token}},this.fetcher);
+      if(response.code!==200||!Array.isArray(response.data))throw failure('Không tải được ca lấy hàng GHN.',502);
+      const rows=response.data.filter((row:Body)=>Number.isSafeInteger(row.id)&&row.id>0&&typeof row.title==='string'&&row.title.trim()&&Number.isSafeInteger(row.from_time)&&Number.isSafeInteger(row.to_time)&&row.to_time>row.from_time).map((row:Body)=>({id:row.id,title:row.title,from_time:row.from_time,to_time:row.to_time}));
+      return {success:true,data:rows,source:'ghn',local_only:false};
+    }
     let endpoint = '', data: Body = {};
     if (action === 'get_provinces') endpoint = 'master-data/province';
     if (action === 'get_districts') { endpoint = 'master-data/district'; data.province_id = positive(body.provinceId, 'Tỉnh/thành'); }
@@ -186,6 +198,42 @@ export class ExternalReadAdapters {
       const dimensionsProvided = dimensionFields.filter(field => fee[field] !== undefined);
       if (dimensionsProvided.length && dimensionsProvided.length !== dimensionFields.length) throw failure('Khi tính cước với kích thước, cần nhập đủ dài × rộng × cao.');
       if (dimensionsProvided.length === dimensionFields.length) for (const field of dimensionFields) data[field] = ghnInteger(fee[field], 1, 200, 'Kích thước kiện hàng');
+      const orderMode = body.orderMode;
+      const entryMode=body.entryMode;
+      if(entryMode!==undefined&&entryMode!=='PACKAGES'||entryMode&&orderMode)throw failure('Kiểu nhập kiện không hợp lệ.');
+      if (orderMode !== undefined && orderMode !== 'LIGHT' && orderMode !== 'HEAVY') throw failure('Loại hàng không hợp lệ.');
+      if(entryMode==='PACKAGES'){
+        if(!Array.isArray(fee.items)||fee.items.length<1||fee.items.length>100)throw failure('Nhập danh sách kiện hàng.');
+        const type=Number(fee.service_type_id);
+        if(![2,5].includes(type)||type===2&&fee.items.length!==1)throw failure('Dịch vụ không hỗ trợ danh sách kiện.');
+        if(type===2?dimensionsProvided.length!==3:dimensionsProvided.length!==0)throw failure('Kích thước không khớp dịch vụ GHN.');
+        data.items=fee.items.map((row:Body,index:number)=>{
+          if(!row||row.name!==`Kiện ${index+1}`||row.code!==undefined||ghnInteger(row.quantity,1,1,'Số lượng kiện')!==1)throw failure('Thông tin kiện hàng không hợp lệ.');
+          return {name:row.name,quantity:1,weight:ghnInteger(row.weight,1,50000,'Khối lượng kiện'),length:ghnInteger(row.length,1,200,'Chiều dài'),width:ghnInteger(row.width,1,200,'Chiều rộng'),height:ghnInteger(row.height,1,200,'Chiều cao')};
+        });
+        if(data.items.reduce((sum:number,row:Body)=>sum+row.weight,0)!==weight)throw failure('Tổng cân nặng không khớp các kiện.');
+        if(type===2&&dimensionFields.some(field=>data.items[0][field]!==data[field]))throw failure('Số đo cả gói không khớp kiện.');
+        if(!Number.isSafeInteger(fee.service_id)||fee.service_id<=0)throw failure('Chọn đúng dịch vụ GHN.');
+        const available=await this.ghn({action:'get_services',shopId:shop,toDistrictId:fee.to_district_id},config);
+        if(!Array.isArray(available.data)||!available.data.some((row:Body)=>row.service_id===fee.service_id&&row.service_type_id===type))throw failure('Dịch vụ không khớp cửa hàng và địa chỉ.');
+      }else if (orderMode) {
+        if (!Array.isArray(fee.items) || fee.items.length<1 || fee.items.length>100) throw failure('Nhập danh sách sản phẩm hoặc kiện hàng.');
+        if (Number(fee.service_type_id)!==(orderMode==='LIGHT'?2:5)) throw failure('Dịch vụ không khớp loại hàng đã chọn.');
+        if (orderMode==='LIGHT' ? dimensionsProvided.length!==3 || weight>50000 : dimensionsProvided.length!==0) throw failure('Kích thước không khớp loại hàng đã chọn.');
+        data.items=fee.items.map((row:Body)=>{
+          if(!row || typeof row.name!=='string' || !row.name.trim() || row.name.trim().length>200)throw failure('Tên sản phẩm/kiện không hợp lệ.');
+          const result:Body={name:row.name.trim(),quantity:ghnInteger(row.quantity,1,orderMode==='LIGHT'?1000:1,'Số lượng'),weight:ghnInteger(row.weight,1,50000,'Khối lượng')};
+          if(orderMode==='LIGHT'){
+            if(dimensionFields.some(field=>row[field]!==undefined))throw failure('Hàng nhẹ khai kích thước cả gói.');
+            if(row.code!==undefined){if(typeof row.code!=='string'||!row.code.trim()||row.code.trim().length>100)throw failure('Mã sản phẩm không hợp lệ.');result.code=row.code.trim();}
+          }else{
+            if(row.code!==undefined)throw failure('Kiện hàng không sử dụng mã sản phẩm.');
+            for(const field of dimensionFields)result[field]=ghnInteger(row[field],1,200,'Kích thước kiện');
+          }
+          return result;
+        });
+        if(orderMode==='HEAVY' && data.items.reduce((sum:number,row:Body)=>sum+row.weight,0)!==weight)throw failure('Tổng cân nặng các kiện không khớp vận đơn.');
+      } else {
       if (fee.items !== undefined && !Array.isArray(fee.items)) throw failure('Danh sách kiện hàng không hợp lệ.');
       const parcelCount = Array.isArray(fee.items) ? fee.items.length : 1;
       // Without an explicit manifest this remains a one-parcel request. Never
@@ -204,11 +252,22 @@ export class ExternalReadAdapters {
         if (parcelCount === 1 && dimensionFields.some(field => data.items[0][field] !== data[field])) throw failure('Thông số kiện trong báo giá không khớp kiện đã đo.');
       }
     }
+      }
     const tracking = ['track', 'track_order', 'get_order_detail'].includes(action);
     if (tracking) { const code = String(body.orderCode || body.order_code || '').trim(); if (!/^[A-Za-z0-9_-]{3,60}$/.test(code)) throw failure('Mã vận đơn GHN không hợp lệ.'); endpoint = 'v2/shipping-order/detail'; data = { order_code: code }; }
     const master = action.startsWith('get_') && ['get_provinces','get_districts','get_wards'].includes(action);
     const query = new URLSearchParams(Object.entries(data).map(([key,value]) => [key,String(value)])).toString();
-    const result = await requestJson('https://online-gateway.ghn.vn/shiip/public-api/' + endpoint + (master && query ? '?' + query : ''), { method: master ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', Token: token, ShopId: shop }, ...(master ? {} : { body: JSON.stringify(data) }) }, this.fetcher);
+    const url='https://online-gateway.ghn.vn/shiip/public-api/' + endpoint + (master && query ? '?' + query : '');
+    const init:RequestInit={method:master?'GET':'POST',headers:{'Content-Type':'application/json',Token:token,ShopId:shop},...(master?{}:{body:JSON.stringify(data)})};
+    let result:Body;
+    if(action==='calculate_fee'&&body.entryMode==='PACKAGES'){
+      try{
+        const response=await this.fetcher(url,{...init,redirect:'error',signal:AbortSignal.timeout(10000)});
+        result=await readGhnProviderJson(response);
+        if(ghnUnsupportedServiceResponse(response,result))throw ghnUnsupportedQuoteError();
+        if(!response.ok)throw failure('Chưa lấy đủ báo cước GHN. Vui lòng thử lại.',502);
+      }catch(error){if(error instanceof Error&&'status'in error)throw error;throw failure('Không kết nối được GHN hoặc hết thời gian chờ. Vui lòng thử lại.',502);}
+    }else result = await requestJson(url,init,this.fetcher);
     if (result.code !== 200 || !result.data) throw failure('GHN không chấp nhận yêu cầu. Vui lòng kiểm tra cấu hình hoặc thông tin tra cứu.', 502);
     let payload = result.data;
     if (action === 'get_shops') payload = Array.isArray(result.data.shops) ? result.data.shops.filter((item: Body) => shops.includes(String(item._id))) : [];

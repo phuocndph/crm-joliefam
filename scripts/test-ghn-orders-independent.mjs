@@ -45,8 +45,9 @@ const provider = async (rawUrl, init = {}) => {
     assert.equal(init.method, 'POST'); const body = JSON.parse(init.body);
     assert.equal(body.from_district, body.shop_id === 456 ? 1453 : 1452);
     if (changeConfigBeforeDispatch) { changeConfigBeforeDispatch = false; config.revision++; }
-    return json({ code: 200, data: [{ service_id: 53320, service_type_id: 2 }] });
+    return json({ code: 200, data: [{ service_id: 53320, service_type_id: 2 },{service_id:100039,service_type_id:5}] });
   }
+  if(endpoint==='v2/shift/date'){assert.equal(init.method,'GET');assert.equal(init.body,undefined);return json({code:200,data:[{id:901,title:'Synthetic next shift',from_time:129600,to_time:151200}]});}
   if (endpoint === 'v2/shipping-order/create') {
     createCount++; lastCreate = { body: JSON.parse(init.body), shop: init.headers.ShopId };
     assert.equal(init.method, 'POST'); assert.equal(lastCreate.shop, '456');
@@ -69,6 +70,11 @@ const provider = async (rawUrl, init = {}) => {
     if (lookupMode === 'missing-failed-cod') delete data.cod_failed_amount;
     if (lookupMode === 'wrong-failed-cod') data.cod_failed_amount = body.cod_failed_amount + 1;
     if (lookupMode === 'null-failed-cod') data.cod_failed_amount = null;
+    if (lookupMode === 'missing-items') delete data.items;
+    if (lookupMode === 'wrong-items') data.items=data.items.map((row,index)=>index===0?{...row,weight:row.weight+1}:row);
+    if (lookupMode === 'missing-content') delete data.content;
+    if (lookupMode === 'wrong-content') data.content='Different shared shipment contents';
+    if (lookupMode === 'wrong-service-id') data.service_id=Number(data.service_id)+1;
     return json({ code: 200, data });
   }
   if (endpoint === 'v2/a5/gen-token') {
@@ -114,14 +120,14 @@ try {
     create table local_user_profiles(user_id text primary key,is_active boolean not null default true);
     create table local_user_roles(user_id text,role text,assigned_by text,is_active boolean not null default true);
     create table local_employee_permissions(user_id text,permission_type text,enabled boolean);
-    create table local_orders(id text primary key,manager_id text,tenant_id text,status text);
+    create table local_orders(id text primary key,manager_id text,tenant_id text,status text,approval_status text default 'approved');
     create table local_projection_tombstones(source_table text,source_key text);
     create table local_auth_audit_events(entity_type text,entity_id text,action text,actor_id text,reason text,after_data jsonb);
     create table local_ghn_tracking(id text primary key,ghn_order_code text unique,internal_order_code text,order_id text,customer_name text,customer_phone text,customer_address text,package_weight numeric,created_date timestamptz,expected_delivery_date timestamptz,cod_amount numeric,ghn_status text,ghn_status_text text,tracking_url text,raw_data jsonb,manager_id text,tenant_id text,is_snapshot_record boolean,local_modified_at timestamptz,last_updated_at timestamptz);
     insert into local_user_profiles(user_id) values('admin-fixture'),('manager-fixture'),('other-manager'),('employee-fixture'),('inactive-fixture');
     update local_user_profiles set is_active=false where user_id='inactive-fixture';
     insert into local_user_roles(user_id,role,assigned_by) values('admin-fixture','admin',null),('manager-fixture','manager',null),('other-manager','manager',null),('employee-fixture','employee','manager-fixture'),('inactive-fixture','manager',null);
-    insert into local_orders values('order-one','manager-fixture','tenant-one','confirmed'),('order-two','other-manager','tenant-two','confirmed');`);
+    insert into local_orders(id,manager_id,tenant_id,status) values('order-one','manager-fixture','tenant-one','confirmed'),('order-two','other-manager','tenant-two','confirmed');`);
   await pool.query(await readFile(new URL('../server/db/migrations/062_local_ghn_order_attempts.sql', import.meta.url), 'utf8'));
   const service = new GhnOrders(pool, new ExternalReadAdapters({}, provider, async () => structuredClone(config)), provider);
 
@@ -144,6 +150,85 @@ try {
     await reject(() => service.create('admin-fixture', { ...request, orderNumber: 'changed' }), 409);
     await reject(() => service.create('admin-fixture', input({ shopId: '999' })), 403);
     await reject(() => service.create('admin-fixture', { ...input(), orderData: { ...input().orderData, from_district_id: 1452 } }));
+  });
+  await reset();
+  await check('explicit light products and named heavy parcels create, replay and reconcile without duplicate dispatch',async()=>{
+    for(const orderMode of ['LIGHT','HEAVY']){
+      await reset();
+      const request=input({orderMode});
+      if(orderMode==='LIGHT'){
+        request.orderData.items=[{name:'Synthetic A',quantity:2,weight:200,code:'SKU-A',price:0},{name:'Synthetic B',quantity:1,weight:500,price:0}];
+        request.orderData.weight=1200;
+        request.orderData.pick_shift=[901];
+      }else{
+        request.orderData.items=[{name:'Named heavy parcel',quantity:1,weight:1000,length:30,width:20,height:20,price:0}];
+        for(const field of ['length','width','height'])delete request.orderData[field];
+        request.orderData.service_type_id=5;request.orderData.service_id=100039;
+      }
+      request.orderData.content=request.orderData.items.map(row=>`${row.name}${row.code?' ['+row.code+']':''} × ${row.quantity}`).join(', ');
+      createMode='timeout';
+      const result=await service.create('admin-fixture',request);
+      assert.equal(result.data.attempt_status,'UNKNOWN');assert.equal(createCount,1);
+      assert.equal(lastCreate.body.orderMode,undefined,'mode stays internal');
+      assert.deepEqual(lastCreate.body.items,request.orderData.items);
+      assert.equal(lastCreate.body.weight,orderMode==='LIGHT'?1200:1000);
+      assert.equal(lastCreate.body.length,orderMode==='LIGHT'?10:undefined);
+      assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);
+      for(const evidence of ['missing-items','wrong-items']){lookupMode=evidence;assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);}
+      lookupMode='success';assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+      assert.equal((await pool.query('select count(*)::int n from local_ghn_tracking')).rows[0].n,1);
+    }
+  });
+  await reset();
+  await check('PACKAGES accepts both services at every threshold and preserves exact submitted physical manifest',async()=>{
+    for(const weight of [19999,20000,20001])for(const serviceType of [2,5]){
+      await reset();
+      const request=input({entryMode:'PACKAGES'});
+      request.orderData.weight=weight;request.orderData.items[0].weight=weight;
+      request.orderData.content='Shared contents, entered once';
+      request.orderData.items[0].name='Kiện 1';
+      request.orderData.service_type_id=serviceType;request.orderData.service_id=serviceType===2?53320:100039;
+      if(serviceType===5)for(const field of ['length','width','height'])delete request.orderData[field];
+      const result=await service.create('admin-fixture',request);
+      assert.equal(result.data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+      assert.equal(lastCreate.body.entryMode,undefined,'envelope marker is internal');
+      assert.equal(lastCreate.body.service_type_id,serviceType);assert.equal(lastCreate.body.service_id,request.orderData.service_id);
+      assert.equal(lastCreate.body.weight,weight);assert.equal(lastCreate.body.length,serviceType===2?10:undefined);
+      assert.deepEqual(lastCreate.body.items,request.orderData.items);
+      assert.equal(lastCreate.body.content,'Shared contents, entered once');
+      assert.equal((await service.create('admin-fixture',request)).data.order_code,result.data.order_code);assert.equal(createCount,1);
+      await reject(()=>service.create('admin-fixture',{...request,orderData:{...request.orderData,content:'changed'}}),409);
+    }
+  });
+  await reset();
+  await check('PACKAGES multi-parcel cannot use type2/fake combined dimensions and UNKNOWN needs exact evidence',async()=>{
+    const request=input({entryMode:'PACKAGES'});
+    request.orderData.content='Two physical parcels';request.orderData.service_type_id=5;request.orderData.service_id=100039;
+    request.orderData.items=[{name:'Kiện 1',quantity:1,weight:1000,length:30,width:20,height:20,price:0},{name:'Kiện 2',quantity:1,weight:500,length:10,width:10,height:10,price:0}];
+    request.orderData.weight=1500;for(const field of ['length','width','height'])delete request.orderData[field];
+    await reject(()=>service.create('admin-fixture',{...request,orderData:{...request.orderData,service_type_id:2,service_id:53320}}));
+    await reject(()=>service.create('admin-fixture',{...request,orderData:{...request.orderData,length:30,width:20,height:30}}));
+    await reject(()=>service.create('admin-fixture',{...request,orderData:{...request.orderData,weight:1499}}));
+    assert.equal(createCount,0);
+    createMode='timeout';
+    assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);
+    assert.deepEqual(lastCreate.body.items,request.orderData.items);assert.equal(lastCreate.body.length,undefined);
+    for(const evidence of ['missing-items','wrong-items','missing-content','wrong-content','wrong-service-id']){lookupMode=evidence;assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'UNKNOWN');}
+    assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);
+    lookupMode='success';assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+  });
+  await reset();
+  await check('PACKAGES single2/single5 UNKNOWN is reconciled only by exact manifest with no second dispatch',async()=>{
+    for(const type of [2,5]){
+      await reset();const request=input({entryMode:'PACKAGES'});
+      request.orderData.content='Shared shipment contents';request.orderData.items[0].name='Kiện 1';
+      request.orderData.service_type_id=type;request.orderData.service_id=type===2?53320:100039;
+      if(type===5)for(const field of ['length','width','height'])delete request.orderData[field];
+      createMode='timeout';assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');
+      for(const evidence of ['missing-items','wrong-items','missing-content','wrong-content','wrong-service-id']){lookupMode=evidence;assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);}
+      assert.equal((await service.create('admin-fixture',request)).data.attempt_status,'UNKNOWN');assert.equal(createCount,1);
+      lookupMode='success';assert.equal((await service.status('admin-fixture',request.idempotencyKey,true)).data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+    }
   });
   await reset();
   await check('print is actor-owned and SUCCESS-only; no dispatch for invalid scope/status/config/shop', async () => {

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type express from "express";
+import {appendPlannedExtras} from './production-planned-extras.js';
 import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { pool } from "./db/bootstrap.js";
@@ -7,7 +8,9 @@ import { businessDateKey } from './business-date.js';
 import {snapshotProductionImages} from './production-reference-images.js';
 import {assertZcrmOrderExecutable} from './zcrm-commerce.js';
 import {executableEstimateOutput} from './production-uncut-cancellations.js';
+import {productionSewingEligibility} from './production-sewing-decision.js';
 import {isLaborProduct,productSupplyClassificationState,productSupplySelection} from './product-fulfillment-classification.js';
+import {snapshotProductionSewingSelection} from './production-sewing-selection.js';
 
 type Body = Record<string, unknown>;
 type Row = Record<string, any>;
@@ -341,8 +344,8 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
     if (!allowed.rows[0]) fail("Tài khoản chưa được cấp quyền cho quy trình sản xuất.", 403);
   }
   async function manage(client: Pick<PoolClient, "query">) { await capability(client, ["production_manage", "production_sales_workflow"]); }
-  type FulfillmentProjection = { fulfillment_route:'SEW'|'PURCHASE'|'UNCLASSIFIED';fulfillment_status:'CONFIRMED'|'UNCLASSIFIED'|'REVIEW';fulfillment_reason:string;fulfillment_requires_split:boolean;fulfillment_revision:number;product_active:boolean;product_labor:boolean };
-  const unresolvedFulfillment=(reason:string):FulfillmentProjection=>({fulfillment_route:'UNCLASSIFIED',fulfillment_status:'UNCLASSIFIED',fulfillment_reason:reason,fulfillment_requires_split:false,fulfillment_revision:0,product_active:false,product_labor:false});
+  type FulfillmentProjection = { fulfillment_route:'SEW'|'PURCHASE'|'UNCLASSIFIED';fulfillment_status:'CONFIRMED'|'UNCLASSIFIED'|'REVIEW';fulfillment_reason:string;fulfillment_requires_split:boolean;fulfillment_revision:number;product_active:boolean;product_labor:boolean;sewing_selection_allowed:boolean;sewing_selection_reason:string|null };
+  const unresolvedFulfillment=(reason:string):FulfillmentProjection=>({fulfillment_route:'UNCLASSIFIED',fulfillment_status:'UNCLASSIFIED',fulfillment_reason:reason,fulfillment_requires_split:false,fulfillment_revision:0,product_active:false,product_labor:false,sewing_selection_allowed:false,sewing_selection_reason:reason});
   /** Uses the canonical classification state; suggestions are never an automatic route. */
   async function fulfillmentForLines(client: Pick<PoolClient,'query'>, lines: Row[], lockProducts=false) {
     const ids=[...new Set(lines.map(line=>String(line.product_id||'')).filter(id=>uuidPattern.test(id)))].sort();
@@ -366,7 +369,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
       if(isLaborProduct(product)){result.set(id,{...unresolvedFulfillment('Mã công may không phải là hàng bán để lập lệnh.'),product_active:Boolean(product.is_active),product_labor:true});continue;}
       if(product.is_active===false){result.set(id,{...unresolvedFulfillment('Sản phẩm đã ngừng dùng; cần cập nhật đơn bán trước khi lập lệnh.'),product_active:false,product_labor:false});continue;}
       const state=productSupplyClassificationState(product, classifications.get(id));
-      result.set(id,{fulfillment_route:state.route,fulfillment_status:state.status,fulfillment_reason:state.reason,fulfillment_requires_split:state.requires_split,fulfillment_revision:state.revision,product_active:true,product_labor:false});
+      result.set(id,{fulfillment_route:state.route,fulfillment_status:state.status,fulfillment_reason:state.reason,fulfillment_requires_split:state.requires_split,fulfillment_revision:state.revision,product_active:true,product_labor:false,...productionSewingEligibility(product,state)});
     }
     return result;
   }
@@ -591,6 +594,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         if (!request || request.status !== "ACCEPTED") fail("Yêu cầu phải được tiếp nhận trước khi lập lệnh.", 409);
         const sourceOrder = (await client.query("select * from local_orders where id=$1 for update", [request.order_id])).rows[0];
         if (!sourceOrder || ["cancelled", "returned"].includes(String(sourceOrder.status || "").toLowerCase())) fail("Đơn nguồn đã hủy/hoàn; cần xử lý điều chỉnh.", 409);
+        await assertZcrmOrderExecutable(client,String(request.order_id));
         const currentSourceLines = await normalizeOrderLines(client, sourceOrder);
         const inputs = Array.isArray(body.lines) ? body.lines as Body[] : [];
         if (!inputs.length) fail("Cần ít nhất một dòng phân bổ.");
@@ -611,37 +615,42 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           if(!line)fail('Dòng phân bổ không thuộc yêu cầu.');
           linesById.set(id,line);
         }
-        const selectedLines=[] as Array<{line:Row;input:Body;quantity:string;supply:FulfillmentProjection}>;
+        const selectedLines=[] as Array<{line:Row;input:Body;quantity:string;supply:FulfillmentProjection;source:Row;itemContext?:Row;sewing?:unknown}>;
         for(const [id,{input,index,quantity}] of inputByLine){
           const line=linesById.get(id)!;
           const currentSource = currentProductionLine(currentSourceLines, line);
           if (!sameProductionLine(currentSource, line)) fail("Nội dung sản phẩm hoặc số lượng đơn nguồn đã thay đổi; cần tạo yêu cầu điều chỉnh.", 409);
           const allocated = (await client.query("select coalesce(sum(quantity),0) quantity from local_production_sales_allocations where request_line_id=$1", [line.id])).rows[0].quantity;
           if ((await client.query("select $1::numeric+$2::numeric>$3::numeric exceeds", [allocated, quantity, line.requested_quantity])).rows[0].exceeds) fail(`Dòng ${line.product_name} vượt số đã tiếp nhận.`);
-          selectedLines.push({line,input,quantity,supply:unresolvedFulfillment(`Dòng ${index+1} chưa được kiểm tra cách đáp ứng.`)});
+          selectedLines.push({line,input,quantity,source:currentSource!,supply:unresolvedFulfillment(`Dòng ${index+1} chưa được kiểm tra cách đáp ứng.`)});
         }
         // Lock product then price-list parents in UUID order, and lock the
         // latest classification before any production order is written.
         const supply=await fulfillmentForLines(client,selectedLines.map(item=>item.line),true);
         for(const selected of selectedLines){
           selected.supply=selected.line.product_id?supply.get(String(selected.line.product_id))||unresolvedFulfillment('Dòng đơn chưa khớp sản phẩm local; cần Sale cập nhật danh mục.'):unresolvedFulfillment('Dòng đơn chưa khớp sản phẩm local; cần Sale cập nhật danh mục.');
-          if(selected.supply.fulfillment_status!=='CONFIRMED'||selected.supply.fulfillment_route!=='SEW'){
+          if(selected.input.sewing_code_selection===undefined&&(selected.supply.fulfillment_status!=='CONFIRMED'||selected.supply.fulfillment_route!=='SEW')){
             const next=selected.supply.fulfillment_route==='PURCHASE'
               ? 'Hàng nhập sẵn đang chờ mua hàng; không tạo lệnh may.'
               : 'Chỉ sản phẩm đã được quản lý xác nhận “May tại xưởng” mới lập lệnh.';
             fail(`Không thể lập lệnh cho ${selected.line.product_name}: ${selected.supply.fulfillment_reason} ${next}`,409);
           }
+          const {line,input}=selected,snapshot=line.source_line_snapshot||{};
+          selected.itemContext={product_id:line.product_id,fabric_variant_id:input.fabric_variant_id||snapshot.fabric_variant_id||null,color:input.color||snapshot.color||null,size:input.size||snapshot.size||null,dimensions:input.dimensions||snapshot.dimensions||snapshot.specifications||null};
+          selected.sewing=await snapshotProductionSewingSelection(client,selected.itemContext,input.sewing_code_selection,body.planned_start_date||businessDateKey(),d.actor(),{order_id:String(request.order_id),line:selected.source});
         }
         const groupId = randomUUID(), orders = [];
-        for (const {line,input,quantity:qty} of selectedLines) {
+        for (const {line,input,quantity:qty,itemContext:itemFacts,sewing} of selectedLines) {
           const number = `SX-${businessDateKey().slice(0,7).replace("-","")}-${randomUUID().slice(0,8).toUpperCase()}`;
           const orderUuid = uuidPattern.test(String(request.order_id)) ? request.order_id : null;
           const po = (await client.query(`insert into local_production_orders(production_order_number,production_batch_number,product_id,quantity_planned,source_type,source_id,order_id,planned_start_date,planned_end_date,production_order_group_id,created_by,dispatch_priority,dispatch_reference,dispatch_notes,sales_request_id,workflow_generation)
             values($1,$1,$2,$3,'FROM_ORDER',$4::uuid,$13::text,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V3') returning *`, [number, line.product_id, qty, orderUuid, body.planned_start_date || null, body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, body.reference || null, body.notes || request.notes || null, request.id, String(request.order_id)])).rows[0];
-          const snapshot = line.source_line_snapshot || {};
           const images=await snapshotProductionImages(client,line.product_id,input.reference_images);
-          const item = (await client.query(`insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,sales_request_line_id,reference_images)
-            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, input.fabric_variant_id || snapshot.fabric_variant_id || null, line.source_line_key, input.color || snapshot.color || null, input.size || snapshot.size || null, input.dimensions || snapshot.dimensions || snapshot.specifications || null, qty, input.notes || body.notes || null, line.id,JSON.stringify(images)])).rows[0];
+          const itemContext=itemFacts!;
+          const item = (await client.query(`insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,sales_request_line_id,reference_images,sewing_code_selection)
+            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, itemContext.fabric_variant_id, line.source_line_key, itemContext.color,itemContext.size,itemContext.dimensions,qty, input.notes || body.notes || null, line.id,JSON.stringify(images),sewing===null?null:JSON.stringify(sewing)])).rows[0];
+          if(sewing)await client.query("insert into local_dispatch_audit_events(production_order_id,action,actor_id,data) values($1,'CREATE_ORDER',$2,$3::jsonb)",[po.id,d.actor(),JSON.stringify({order_item_id:item.id,sewing_code_selection:sewing})]);
+          await appendPlannedExtras(client,po.id,item.id,input.planned_extras,d.actor(),d.role());
           const batch = (await client.query("insert into local_production_batches(production_order_id,batch_number,planned_quantity,status,created_by) values($1,$2,$3,'PLANNED',$4) returning *", [po.id, number, qty, d.actor()])).rows[0];
           await client.query("insert into local_production_sales_allocations(request_line_id,production_order_id,order_item_id,production_batch_id,quantity,created_by) values($1,$2,$3,$4,$5,$6)", [line.id, po.id, item.id, batch.id, qty, d.actor()]);
           const cuttingEstimate = await createInitialDraftCuttingPlan(client,po.id,item,batch,input.cutting_plan,d.actor());
@@ -688,7 +697,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
             for(const {source,input,qty} of selected){
               const line=saved.find((line:Row)=>line.source_line_key===source.source_line_key);
               if(!line || !sameProductionLine(source,line) || (await client.query('select $1::numeric+$2::numeric>$3::numeric exceeds',[line.allocated,qty,line.requested_quantity])).rows[0].exceeds)break;
-              lines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan});
+              lines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan,sewing_code_selection:input.sewing_code_selection,planned_extras:input.planned_extras});
             }
             if(lines.length===selected.length)candidates.push({request,lines});
           }
@@ -704,7 +713,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         for(const {source,input,qty} of selected){
           const line=(await client.query(`insert into local_production_sales_request_lines(request_id,source_line_key,source_line_index,source_line_snapshot,product_id,product_sku,product_name,ordered_quantity,requested_quantity)
             values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9) returning *`,[linkage.id,source.source_line_key,source.source_line_index,JSON.stringify(source.source_line_snapshot),source.product_id,source.product_sku,source.product_name,source.ordered_quantity,qty])).rows[0];
-          allocationLines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan});
+          allocationLines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan,sewing_code_selection:input.sewing_code_selection,planned_extras:input.planned_extras});
         }
         await client.query("insert into local_production_sales_events(request_id,action,to_status,actor_id,data) values($1,'DIRECT_CREATE','ACCEPTED',$2,$3::jsonb)",[linkage.id,d.actor(),JSON.stringify({source:'CRM_ORDER',order_id:orderId,approval_required:false,line_count:selected.length})]);
         return allocateAccepted(client,linkage.id,{...req.body,planned_start_date:start,planned_end_date:due,lines:allocationLines});

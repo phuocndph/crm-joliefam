@@ -47,6 +47,7 @@ import { moduleRequirement } from './module-permissions.js';
 import { payrollPermissions, payrollCapability, delegablePayrollPermissions, validatePermissionChanges } from './permission-policy.js';
 import { authorizePayrollRequest } from './payroll-access.js';
 import { businessDateKey } from './business-date.js';
+import { resolveIntegrationInternalCaller,isIntegrationServiceIdentity } from './integration-internal-principal.js';
 import { registerIntegrationAccess } from './integration-access.js';
 import { registerZcrmCommerce } from './zcrm-commerce.js';
 import { LocalAiProvider, registerAiProviders } from './ai-provider.js';
@@ -58,6 +59,8 @@ import {registerProductRateQuote} from "./product-rate-quote.js";
 import {registerProductRateAuthoring,assertProductRateAuthoringAuthority} from "./product-rate-authoring.js";
 import {codeKey} from "./product-labor-resolver.js";
 import {loadEffectiveApprovedProductRates,lockProductRateConfigShared,listRuntimePieceRates,selectRuntimePieceRate} from './product-rate-consumption.js';
+import {snapshotProductionSewingSelection} from './production-sewing-selection.js';
+import {appendPlannedExtras} from './production-planned-extras.js';
 import {rateFields,rateRangesOverlap,rateNameKey,assertRateInsertAllowed,type RateFields,type RateSource} from "./product-rate-inputs.mjs";
 import { registerProductionWorkspace } from "./production-workspace.js";
 import {
@@ -170,7 +173,7 @@ const findUserSession = async (token: string) => {
     returning s.user_id`,
     [hashSessionToken(token)],
   );
-  return rows[0] ? String(rows[0].user_id) : null;
+  return rows[0] && !await isIntegrationServiceIdentity(pool,String(rows[0].user_id)) ? String(rows[0].user_id) : null;
 };
 const isLoopbackRequest = (req: express.Request) => {
   const address = req.socket.remoteAddress || "";
@@ -195,6 +198,17 @@ const bearerMatchesLocalSession = (authorization: string | undefined) => {
 };
 // Resolve danh tính caller: ưu tiên phiên per-user trong DB, fallback phiên admin loopback.
 const resolveLocalCaller = async (req: express.Request) => {
+  const internal=resolveIntegrationInternalCaller(req);
+  if(internal){
+    const authorized=await pool.query(`select 1 from integration_access.connections c
+      join integration_access.keys k on k.connection_id=c.id
+      join integration_access.grants g on g.connection_id=c.id and g.capability=$5 and g.all_resources
+      join integration_access.service_identities s on s.connection_id=c.id
+      join local_user_profiles p on p.user_id=s.user_id and p.is_active
+      where c.id=$1 and c.active and k.id=$2 and k.token_hash=$3 and k.revoked_at is null
+      and k.expires_at>now() and $5=any(k.capabilities) and s.user_id=$4`,[internal.connectionId,internal.keyId,internal.tokenHash,internal.userId,internal.capability]);
+    return authorized.rows[0]?{kind:'user' as const,userId:internal.userId}:null;
+  }
   const token = bearerToken(req.get("authorization"));
   const userId = await findUserSession(token);
   if (userId) return { kind: "user" as const, userId };
@@ -422,7 +436,7 @@ app.post("/api/local-auth/login", async (req, res) => {
     );
     const account = rows[0];
     const localPasswordValid = Boolean(account && verifyLocalPassword(password, account.password_hash));
-    if (!account || !localPasswordValid) {
+    if (!account || !localPasswordValid || await isIntegrationServiceIdentity(pool,String(account.user_id))) {
       return res
         .status(401)
         .json({
@@ -931,7 +945,18 @@ registerPurchaseFulfillment(app, {
   sendError,
 });
 registerOrderShipments(app,{actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,lockShared:lockPayrollSourceShared,sendError});
-registerProductionWorkspace(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,lockShared:lockPayrollSourceShared,sendError});
+registerProductionWorkspace(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,lockShared:lockPayrollSourceShared,sendError,prepareExtraPayroll:async(client,workerId,date)=>{
+  const context=await payrollSourceContext(client,workerId,date);
+  if(!context.worker.is_active||context.worker.payroll_status!=='ACTIVE')throw Object.assign(new Error('Nhân viên ngừng hoạt động hoặc chưa thuộc bảng lương đang dùng.'),{status:409});
+  await lockAttendanceDay(client,workerId,date);
+  await assertWorkflowWritable(client,workerId,date,'SUBMITTED');
+  await assertDayStatusAllowsWork(client,workerId,date,'ghi tiền công cộng thêm');
+  if((await client.query("select 1 from local_payroll_periods where status='CLOSED' and $1::date between period_start and period_end",[date])).rows[0])throw Object.assign(new Error('Ngày hoàn thành thuộc kỳ lương đã đóng.'),{status:409});
+  const start=date.slice(0,7)+'-01',end=new Date(Date.UTC(Number(date.slice(0,4)),Number(date.slice(5,7)),0)).toISOString().slice(0,10);
+  const period=await payrollAdjustmentPeriod(start,end,26,client);
+  if(period.status==='CLOSED')throw Object.assign(new Error('Kỳ lương đã đóng.'),{status:409});
+  return String(period.id);
+}});
 registerProductSupplyClassifications(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,sendError});
 registerProductTechnicalProfiles(app, {actor:currentLocalActor,role:currentLocalRole,transaction:withLocalTransaction,sendError});
 registerProductLaborMappings(app,{actor:currentLocalActor,role:currentLocalRole,capability:write=>requireLocalCapability(pool,write?['payroll_rate_manage']:['payroll_rate_view','payroll_rate_manage']),transaction:withLocalTransaction,sendError});
@@ -1676,7 +1701,7 @@ app.post("/api/local-functions/:name", async (req, res) => {
         await requireGhnTrackingVisible(pool, currentLocalActor(), code);
       }
       try { return res.json(await externalRead.ghn(body, undefined, currentLocalActor())); }
-      catch (error) { return res.status(Number((error as {status?:number}).status || 502)).json({ success: false, error: error instanceof Error ? error.message : 'Không truy cập được GHN.' }); }
+      catch (error) { return res.status(Number((error as {status?:number}).status || 502)).json({ success: false, error: error instanceof Error ? error.message : 'Không truy cập được GHN.',...(error&&typeof error==='object'&&'code'in error&&error.code==='GHN_SERVICE_UNSUPPORTED'?{code:'GHN_SERVICE_UNSUPPORTED'}:{}) }); }
     }
     if (name === "vinvoice-api") {
       const action = String(body.action || "");
@@ -4036,6 +4061,7 @@ async function localUserDetails(userId: string) {
   return localUserRow(profile.rows[0], roles.rows);
 }
 async function assertManagedUser(client: Pick<PoolClient, 'query'>, userId: string, permissionTarget = false) {
+  if(await isIntegrationServiceIdentity(client as PoolClient,userId))throw Object.assign(new Error('Danh tính dịch vụ chỉ được quản lý qua cấu hình kết nối Agent.'),{status:403});
   const { rows } = await client.query(`select role,assigned_by from local_user_roles where user_id=$1 and (is_active or $2='admin') order by is_active desc,case role when 'admin' then 1 when 'manager' then 2 when 'accountant' then 3 when 'team_leader' then 4 else 5 end limit 1`, [userId,currentLocalRole()]);
   const target = rows[0];
   if (!target || (permissionTarget && !['employee','accountant','team_leader'].includes(target.role))) throw Object.assign(new Error('Không thể cấu hình quyền cho tài khoản này.'), {status:403});
@@ -4201,6 +4227,7 @@ app.post("/api/users/:id/password", async (req, res) => {
   let transactionOpen = false;
   try {
     const userId = String(req.params.id);
+    if(await isIntegrationServiceIdentity(pool,userId))throw Object.assign(new Error('Danh tính dịch vụ không có mật khẩu hoặc phiên đăng nhập.'),{status:403});
     const next = String(req.body?.new_password || req.body?.newPassword || "");
     const current = req.body?.current_password || req.body?.currentPassword;
     if (next.length < 12 || next.length > 128 || !/[a-z]/.test(next) || !/[A-Z]/.test(next) || !/\d/.test(next) || !/[^a-zA-Z0-9\s]/.test(next))
@@ -11583,8 +11610,9 @@ app.post("/api/production-orders/groups", async (req, res) => {
       );
       const createdOrder = orderResult.rows[0];
       const images=await snapshotProductionImages(client,productId,line.reference_images);
+      const sewing=await snapshotProductionSewingSelection(client,{product_id:productId,fabric_variant_id:line.fabric_variant_id||null,color:line.color||null,size:line.size||null,dimensions:line.dimensions||null},line.sewing_code_selection,start||businessDateKey(),currentLocalActor());
       const orderItemResult = await client.query(
-        `insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,reference_images) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) returning id`,
+        `insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,reference_images,sewing_code_selection) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb) returning id`,
         [
           createdOrder.id,
           productId,
@@ -11598,8 +11626,10 @@ app.post("/api/production-orders/groups", async (req, res) => {
           quantity,
           line.notes || notes,
           JSON.stringify(images),
+          sewing===null?null:JSON.stringify(sewing),
         ],
       );
+      await appendPlannedExtras(client,createdOrder.id,orderItemResult.rows[0].id,line.planned_extras,currentLocalActor(),currentLocalRole());
       const batchResult = await client.query(
         `insert into local_production_batches(production_order_id,batch_number,planned_quantity,status,created_by) values($1,$2,$3,'PLANNED',$4) returning id`,
         [createdOrder.id, number, quantity, currentLocalActor()],
@@ -11617,6 +11647,7 @@ app.post("/api/production-orders/groups", async (req, res) => {
         source_order_item_key: line.source_order_item_key || null,
         production_batch_id: batchResult.rows[0].id,
         cutting_estimate_id: cuttingEstimate?.id || null,
+        sewing_code_selection:sewing,
       });
       await client.query("insert into local_dispatch_audit_events(production_order_id,action,actor_id,data) values($1,'CREATE_ORDER',$2,$3::jsonb)", [createdOrder.id, currentLocalActor(), JSON.stringify(created[created.length-1])]);
     }
@@ -12013,7 +12044,7 @@ app.get("/api/production/fabric-variants", async (req, res) => {
 app.get("/api/production-orders/:id/items", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `select i.id,i.production_order_id,i.product_id,i.product_sku,i.product_name,i.fabric_variant_id,i.source_order_item_key,i.color,i.size,i.dimensions,i.planned_quantity,i.completed_quantity,i.notes,i.created_at from local_production_order_items i where i.production_order_id=$1 order by i.created_at`,
+      `select i.id,i.production_order_id,i.product_id,i.product_sku,i.product_name,i.fabric_variant_id,i.source_order_item_key,i.color,i.size,i.dimensions,i.planned_quantity,i.completed_quantity,i.notes,i.created_at,i.sewing_code_selection->>'piece_rate_code' sewing_code from local_production_order_items i where i.production_order_id=$1 order by i.created_at`,
       [req.params.id],
     );
     res.json(

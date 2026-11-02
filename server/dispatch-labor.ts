@@ -6,6 +6,7 @@ import {codeKey} from './product-labor-resolver.js';
 import {productDigest} from './product-catalog-snapshot.js';
 import {canonicalLaborCatalog} from './product-labor-requirements.js';
 import {laborCodeUsagePolicy} from './product-labor-usage-policy.js';
+import {resolveProductionSewingSelection} from './production-sewing-selection.js';
 type Row=Record<string,any>;
 type DB=Pick<PoolClient,'query'>;
 const fail=(message:string):never=>{throw Object.assign(new Error(message),{status:409});};
@@ -18,6 +19,7 @@ export async function assertPaidCurtainRepair(db:DB,code:string,date:string){
 export async function resolveDispatchLabor(db:DB,orderId:string,itemId:string,date:string){
  const item=(await db.query('select * from local_production_order_items where id=$1 and production_order_id=$2',[itemId,orderId])).rows[0];
  if(!item?.product_id)fail('Chọn đúng dòng sản phẩm của lệnh để xác định mã công.');
+ if(item.sewing_code_selection)return resolveProductionSewingSelection(db,item,date);
  // Order-specific size/color/fabric overrides require an explicit confirmed
  // product profile; never guess a mapping from the name or a manual code.
  const product=(await db.query('select id,price_list_id,specifications from local_products where id=$1 for share',[item.product_id])).rows[0];

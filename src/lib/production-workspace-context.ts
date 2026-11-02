@@ -1,5 +1,5 @@
 import {workspaceStages,stageNames,type WorkspaceRow,type WorkspaceStage} from './production-workspace-types';
-export interface ProductionWorkspaceContext {section:'FLOW'|'MATERIAL'|'STOCK';batchId:string;itemId:string;stage?:WorkspaceStage;intent:'VIEW'|'ASSIGN'|'REVIEW'|'REPAIR'|'RECEIVE'|'SHIP'|'COMPLETE'|'RESUME'}
+export interface ProductionWorkspaceContext {section:'OVERVIEW'|'FLOW'|'MATERIAL'|'STOCK';batchId:string;itemId:string;stage?:WorkspaceStage;intent:'VIEW'|'ASSIGN'|'REVIEW'|'REPAIR'|'RECEIVE'|'SHIP'|'COMPLETE'|'RESUME'}
 export function stageContext(row:WorkspaceRow,stage:WorkspaceStage):ProductionWorkspaceContext{return {section:'FLOW',stage,batchId:row.batch_id,itemId:row.item_id,intent:'VIEW'};}
 export function workspaceShowsBoard(mode:string|undefined){return mode==='MANAGER'||mode==='OPERATIONS'||mode==='SALES';}
 // Stage filters describe independent work, not the single next-action shortcut.

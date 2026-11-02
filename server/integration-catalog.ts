@@ -7,9 +7,9 @@ export const integrationCatalog = [
  { id: 'inventory.read', label: 'Tồn kho theo sổ kho', resource: 'warehouses', secondary: 'inventory-items', path: 'inventory', tool: 'get_inventory_on_hand' },
  { id: 'attendance.read', label: 'Tổng hợp chấm công', resource: 'workers', path: 'attendance', tool: 'get_attendance_summary' },
 ] as const;
-export const unsupportedIntegrationModules = ['Tạo/sửa/xóa dữ liệu', 'Duyệt sản xuất và kho', 'Hợp đồng', 'Hóa đơn điện tử', 'Tiền lương', 'Tài chính', 'Giá vốn và giá thành', 'Vải chuyên sâu', 'Chăm sóc khách hàng', 'Vận chuyển', 'Tri thức và AI', 'Tài khoản và phân quyền', 'Đồng bộ và sao lưu', 'Báo cáo tổng hợp'];
-export type IntegrationCapability = typeof integrationCatalog[number]['id'];
-export type IntegrationGrant = { capability: IntegrationCapability; resource_ids: string[]; secondary_ids: string[]; contact_access: boolean };
+export const legacyUnsupportedIntegrationModules = ['Tạo/sửa/xóa dữ liệu', 'Duyệt sản xuất và kho', 'Hợp đồng', 'Hóa đơn điện tử', 'Tiền lương', 'Tài chính', 'Giá vốn và giá thành', 'Vải chuyên sâu', 'Chăm sóc khách hàng', 'Vận chuyển', 'Tri thức và AI', 'Tài khoản và phân quyền', 'Đồng bộ và sao lưu', 'Báo cáo tổng hợp'];
+export type IntegrationCapability = typeof integrationCatalog[number]['id'] | `business.${string}.${'read'|'write'|'provider'}`;
+export type IntegrationGrant = { capability: IntegrationCapability; resource_ids: string[]; secondary_ids: string[]; contact_access: boolean; all_resources?: boolean };
 export const resourceCatalog: Record<string, { table: string; code: string; name: string; source: string; active?: string; idType: 'uuid' | 'text' }> = {
  products: { table: 'local_products', code: 'sku', name: 'name', source: 'products', active: 'is_active', idType: 'uuid' },
  customers: { table: 'local_customers', code: 'customer_code', name: 'name', source: 'customers', active: 'is_active', idType: 'text' },
@@ -20,3 +20,5 @@ export const resourceCatalog: Record<string, { table: string; code: string; name
  'inventory-items': { table: 'local_inventory_items', code: 'code', name: 'name', source: 'inventory_items', active: 'is_active', idType: 'uuid' },
  workers: { table: 'local_workers', code: 'employee_code', name: 'display_name', source: 'workers', active: 'is_active', idType: 'uuid' },
 };
+
+export const unsupportedIntegrationModules = ['Đăng nhập/phiên người dùng và mật khẩu', 'Truy cập SQL/RPC/bảng tùy ý', 'Tự quản trị kết nối Agent', 'Sao lưu vật lý chưa có API', 'Phát hành hóa đơn/provider draft chưa được nhà cung cấp xác nhận'];

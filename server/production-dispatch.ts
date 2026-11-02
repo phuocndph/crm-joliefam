@@ -9,6 +9,7 @@ import {cuttingScope} from './production-uncut-cancellations.js';
 import {resolveDispatchLabor,validateDispatchLabor,publicLaborAssignment} from './dispatch-labor.js';
 import {codeKey} from './product-labor-resolver.js';
 import {listRuntimePieceRates,loadEffectiveApprovedProductRates,selectRuntimePieceRate} from './product-rate-consumption.js';
+import {productionSewingCatalog,lockProductionSewingCatalog,sewingSelectionDate} from './production-sewing-selection.js';
 
 type Body = Record<string, unknown>;
 type Row = Record<string, any>;
@@ -302,7 +303,7 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
     res.json({assignments,reports:page.map(row=>row.report),total:result.total,has_more,next_cursor:has_more?page.at(-1)!.id:null,limit});
   }catch(error){d.sendError(res,error);}});
   app.get('/api/production-dispatch/received-work',async(req,res)=>{try{const result=await d.transaction(async client=>{await manager(client);const worker=String(req.query.worker_id||''),date=workDate(req.query.date||today());await scope(client,worker,date);return(await client.query(`select a.id,a.piece_rate_code,i.product_name,o.production_order_number,a.accepted_quantity-a.returned_quantity-coalesce((select sum(e.quantity_received) from local_production_stage_events e where e.assignment_id=a.id and e.source_stage_event_id is null and e.status in ('SUBMITTED','APPROVED','LOCKED')),0) remaining_quantity from local_assignments a join local_production_orders o on o.id=a.production_order_id join local_production_order_items i on i.id=a.order_item_id where a.worker_id=$1 and a.dispatch_stage='SEWING' and a.dispatch_status='ACCEPTED' and a.assigned_from<=$2::date and (a.assigned_to is null or a.assigned_to>=$2::date) and o.status in ('RELEASED','IN_PROGRESS') order by a.created_at desc`,[worker,date])).rows;});res.json(result);}catch(error){d.sendError(res,error);}});
-  app.get('/api/production-dispatch/labor-preview',async(req,res)=>{try{const result=await d.transaction(async client=>{await manager(client);await d.lockRateConfigShared(client);await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");return resolveDispatchLabor(client,String(req.query.production_order_id||''),String(req.query.order_item_id||''),workDate(req.query.date||today()));});res.json({status:'RESOLVED',piece_rate_code:result.basis.piece_rate_code,rate_unit:'PIECE',reason:'Mã công từ hồ sơ kỹ thuật và ánh xạ đã duyệt.'});}catch(error){d.sendError(res,error);}});
+  app.get('/api/production-dispatch/labor-preview',async(req,res)=>{try{const result=await d.transaction(async client=>{await manager(client);await d.lockRateConfigShared(client);await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");return resolveDispatchLabor(client,String(req.query.production_order_id||''),String(req.query.order_item_id||''),workDate(req.query.date||today()));});res.json({status:'RESOLVED',piece_rate_code:result.basis.piece_rate_code,rate_unit:'PIECE',basis_kind:result.basis.kind,reason:result.basis.kind==='ORDER_SELECTION'?'Mã may đã chọn riêng cho dòng lệnh.':'Mã công từ hồ sơ kỹ thuật và ánh xạ đã duyệt.'});}catch(error){d.sendError(res,error);}});
   app.post('/api/production-dispatch/assignments/:id/reconcile-labor',async(req,res)=>{try{res.json(await mutate(`RECONCILE_LABOR:${req.params.id}`,req.body,async client=>{await manager(client);const a=await assignment(client,String(req.params.id));await scope(client,a.worker_id,String(a.assigned_from));if(a.repair_ticket_id||a.dispatch_stage!=='SEWING')fail('Công việc không cần đối soát mã may.');const reason=String(req.body.reason||'').trim();if(reason.length<3)fail('Nhập lý do đối soát ít nhất 3 ký tự.');const resolved=await resolveDispatchLabor(client,a.production_order_id,a.order_item_id,String(a.assigned_from));if(codeKey(a.piece_rate_code)!==codeKey(resolved.basis.piece_rate_code))fail('Mã công hiện tại không khớp; không tự thay mã của việc đã giao.',409);await client.query('update local_assignments set labor_basis=$2::jsonb where id=$1',[a.id,JSON.stringify(resolved.basis)]);await audit(client,a.production_order_id,'RECONCILE_LABOR',{...a,labor_basis:resolved.basis},req.body);return publicLaborAssignment({...a,labor_basis:resolved.basis});}));}catch(error){d.sendError(res,error);}});
   app.get('/api/production-dispatch/assignments/:id/pay-preview',async(req,res)=>{try{const result=await d.transaction(async client=>{await d.lockRateConfigShared(client);await client.query("select pg_advisory_xact_lock_shared(hashtextextended('labor-mapping-writer',0))");
     const date=workDate(req.query.work_date),good=quantity(req.query.quantity_good,true);
@@ -327,6 +328,16 @@ export function registerProductionDispatch(app: express.Express, d: Dependencies
       const mine = String(req.query.mine || '') === '1';
       res.json((await read(req, mine)).publications);
     } catch (error) { d.sendError(res, error); }
+  });
+  app.get('/api/production-dispatch/sewing-codes', async (req,res) => {
+    try {
+      const result=await d.transaction(async client=>{
+        await permission(client,['production_manage','production_operations']);
+        await lockProductionSewingCatalog(client);
+        return productionSewingCatalog(client,sewingSelectionDate(req.query.date||today()),String(req.query.search||''),Number(req.query.offset||0));
+      });
+      res.json(result);
+    }catch(error){d.sendError(res,error);}
   });
   app.get('/api/production-dispatch/rates', async (req,res) => {
     try {

@@ -1,8 +1,9 @@
 export type GhnQuoteShop = { _id: number; name: string; address: string; district_id: number };
-export type GhnQuoteService = { service_id: number; service_type_id: number; short_name: string };
-export const ghnServiceChoiceKey = (service: GhnQuoteService) => `${service.service_id}:${service.service_type_id}`;
+export type GhnOrderMode = 'LIGHT' | 'HEAVY';
+export type GhnQuoteService = { service_id?: number; service_type_id: number; short_name: string };
+export const ghnServiceChoiceKey = (service: GhnQuoteService) => `${service.service_id ?? 'type'}:${service.service_type_id}`;
 export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
-export type GhnQuoteItem = { name: string; quantity: number; weight: number; length: number; width: number; height: number };
+export type GhnQuoteItem = { name: string; quantity: number; weight: number; code?: string; length?: number; width?: number; height?: number };
 export type GhnProductLine = { name: string; quantity: number; weight?: number; code?: string };
 export type GhnFeeData = { to_district_id?: number; to_ward_code?: string; weight: number; cod_value: number; insurance_value: number; cod_failed_amount?: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
 export type GhnQuoteSnapshot = {
@@ -10,8 +11,13 @@ export type GhnQuoteSnapshot = {
   kind: 'preliminary' | 'final';
   feeData: GhnFeeData;
   newAddress?: Record<string,unknown>;
+  orderMode?: GhnOrderMode;
+  entryMode?: 'PACKAGES';
+  content?: string;
+  serviceType?: 2 | 5;
+  pickShift?: number;
 };
-export type GhnMeasuredParcel = { weight: number; length?: number; width?: number; height?: number };
+export type GhnMeasuredParcel = { name?: string; weight: number; length?: number; width?: number; height?: number };
 export const GHN_QUOTE_TTL_MS = 60000;
 export const GHN_FEE_COMPONENT_LABELS = {
   service_fee: 'Phí dịch vụ', insurance_fee: 'Phí bảo hiểm', cod_fee: 'Phí thu hộ COD',
@@ -47,7 +53,7 @@ export function ghnRecipientAmount(cod: number, payment: string, quote: GhnFeeQu
   const amount = cod + quote!.total;
   return Number.isSafeInteger(amount) ? amount : null;
 }
-type QuoteInput = { addressMode?:'NEW2'; newAddress?:Record<string,unknown>; provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; codFailed?: number; parcel?: GhnMeasuredParcel; parcels?: readonly GhnMeasuredParcel[] };
+type QuoteInput = { entryMode?:'PACKAGES';content?:string;orderMode?:GhnOrderMode; pickShift?:number; addressMode?:'NEW2'; newAddress?:Record<string,unknown>; provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; codFailed?: number; parcel?: GhnMeasuredParcel; parcels?: readonly GhnMeasuredParcel[] };
 const integer = (value: number, min: number, max: number) => Number.isSafeInteger(value) && value >= min && value <= max;
 const physical = (row: Partial<GhnQuoteItem>): row is GhnQuoteItem => integer(Number(row.quantity), 1, 1000) && integer(Number(row.weight), 1, 50000) && [row.length, row.width, row.height].every(value => integer(Number(value), 1, 200));
 
@@ -62,14 +68,16 @@ export function parseGhnKilograms(value: string): number | null {
 }
 
 /** Multi-parcel orders use type 5, including when total weight is below 20 kg. */
-export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number, parcelCount = 1): boolean {
+export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number, parcelCount = 1, orderMode?:GhnOrderMode,entryMode?:'PACKAGES'): boolean {
+  if(entryMode==='PACKAGES')return !orderMode&&integer(parcelCount,1,100)&&integer(weight,parcelCount,parcelCount*50000)&&(service.service_type_id===5||parcelCount===1&&service.service_type_id===2);
+  if (orderMode) return integer(parcelCount,1,100) && integer(weight,1,orderMode==='LIGHT'?50000:parcelCount*50000) && service.service_type_id === (orderMode==='LIGHT'?2:5);
   // The existing 50 kg boundary applies to each measured physical parcel,
   // rather than their aggregate. A weight-only call still means one parcel.
   return integer(parcelCount, 1, 100) && integer(weight, parcelCount, parcelCount * 50000) && (weight < 20000 && parcelCount === 1 ? service.service_type_id === 2 : service.service_type_id === 5);
 }
 
-export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number, parcelCount = 1): GhnQuoteService[] {
-  return services.filter(service => isGhnServiceEligible(service, weight, parcelCount));
+export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number, parcelCount = 1, orderMode?:GhnOrderMode,entryMode?:'PACKAGES'): GhnQuoteService[] {
+  return services.filter(service => isGhnServiceEligible(service, weight, parcelCount, orderMode,entryMode));
 }
 
 // Names/content are required only when creating an order. Fee requests use
@@ -115,6 +123,33 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
   if (!integer(Number(input.provinceId), 1, 99999999) || (input.addressMode!=='NEW2'&&!integer(Number(input.districtId), 1, 99999999)) || !/^[A-Za-z0-9_-]{1,30}$/.test(input.wardCode) || !input.address.trim()) return fail('Chọn đủ địa chỉ tỉnh / thành, quận / huyện và phường / xã để tính cước.');
   if (!integer(input.cod, 0, 50000000) || !integer(input.insurance, 0, 5000000)) return fail('COD phải là số nguyên từ 0 đến 50 triệu; bảo hiểm từ 0 đến 5 triệu đồng.');
   if (input.codFailed !== undefined && !integer(input.codFailed, 0, 50000000)) return fail('Tiền thu khi giao thất bại phải là số nguyên từ 0 đến 50 triệu đồng.');
+  if(input.entryMode==='PACKAGES'){
+    if(input.orderMode||input.pickShift!==undefined)return fail('Thông tin kiện hàng không hợp lệ.');
+    const rows=input.parcels,content=input.content?.trim()??'';
+    if(!content||content.length>2000)return fail('Nhập nội dung hàng gửi (tối đa 2.000 ký tự).');
+    if(!rows?.length||rows.length>100||rows.some(row=>!integer(row.weight,1,50000)||![row.length,row.width,row.height].every(value=>integer(Number(value),1,200))))return fail('Nhập cân nặng 1–50.000 gram và dài, rộng, cao 1–200 cm cho từng kiện.');
+    const feeData:GhnFeeData={...(input.addressMode==='NEW2'?{}:{to_district_id:Number(input.districtId),to_ward_code:input.wardCode}),weight:rows.reduce((sum,row)=>sum+row.weight,0),cod_value:input.cod,insurance_value:input.insurance,cod_failed_amount:input.codFailed??0,items:rows.map((row,index)=>({name:`Kiện ${index+1}`,quantity:1,weight:row.weight,length:row.length!,width:row.width!,height:row.height!}))};
+    return {snapshot:{entryMode:'PACKAGES',content,kind:'final',key:JSON.stringify(['PACKAGES',input.provinceId,input.address,content,feeData,input.newAddress]),feeData,...(input.addressMode==='NEW2'?{newAddress:input.newAddress}:{})},error:''};
+  }
+  if (input.orderMode) {
+    const measured = input.orderMode === 'LIGHT' ? [input.parcel ?? input.parcels?.[0]] : input.parcels;
+    if (!measured?.length || measured.length>100 || measured.some(row=>!row || !integer(row.weight,1,50000) || ![row.length,row.width,row.height].every(value=>integer(Number(value),1,200)))) return fail('Nhập cân nặng 1–50.000 gram và đủ dài × rộng × cao 1–200 cm cho từng kiện.');
+    const rows = measured as GhnMeasuredParcel[];
+    let items:GhnQuoteItem[];
+    if (input.orderMode==='LIGHT') {
+      const products=input.items ?? [];
+      const error=validateGhnCreateItems(products);
+      if (error) return fail(error);
+      if (products.some(row=>!integer(Number(row.weight),1,50000))) return fail('Nhập KL (gram) của từng sản phẩm.');
+      items=products.map(row=>({name:row.name.trim(),quantity:row.quantity,weight:row.weight!,...(row.code?.trim()?{code:row.code.trim()}:{})}));
+    } else {
+      if (rows.some(row=>!row.name?.trim() || row.name.trim().length>200)) return fail('Nhập tên cho từng kiện (tối đa 200 ký tự).');
+      items=rows.map(row=>({name:row.name!.trim(),quantity:1,weight:row.weight,length:row.length!,width:row.width!,height:row.height!}));
+      if(buildGhnPackedContent(items).length>2000)return fail('Tổng nội dung kiện hàng không được vượt quá 2.000 ký tự.');
+    }
+    const feeData:GhnFeeData={...(input.addressMode==='NEW2'?{}:{to_district_id:Number(input.districtId),to_ward_code:input.wardCode}),weight:rows.reduce((sum,row)=>sum+row.weight,0),cod_value:input.cod,insurance_value:input.insurance,cod_failed_amount:input.codFailed??0,items,...(input.orderMode==='LIGHT'?{length:rows[0].length!,width:rows[0].width!,height:rows[0].height!}:{})};
+    return {snapshot:{key:JSON.stringify([input.orderMode,input.provinceId,input.address,feeData,input.newAddress,input.pickShift]),kind:'final',orderMode:input.orderMode,...(input.pickShift?{pickShift:input.pickShift}:{}),feeData,...(input.addressMode==='NEW2'?{newAddress:input.newAddress}:{})},error:''};
+  }
   if (input.parcels) {
     if (!integer(input.parcels.length, 1, 100)) return fail('Mỗi vận đơn có từ 1 đến 100 kiện.');
     if (input.parcels.length === 1) return buildGhnQuoteSnapshot({ ...input, parcels: undefined, parcel: input.parcels[0] });
@@ -156,10 +191,20 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
 export class StaleGhnQuoteError extends Error {
   constructor() { super('Thông tin tính cước đã thay đổi.'); }
 }
+
+/** Each service gets its actual public API representation, never a combined box. */
+export function buildGhnServiceSnapshot(snapshot:GhnQuoteSnapshot,service:Pick<GhnQuoteService,'service_type_id'>):GhnQuoteSnapshot {
+  if(snapshot.entryMode!=='PACKAGES')return snapshot;
+  if(!isGhnServiceEligible(service,snapshot.feeData.weight,snapshot.feeData.items?.length??0,undefined,'PACKAGES'))throw new Error('Dịch vụ không hỗ trợ danh sách kiện.');
+  const {length:_length,width:_width,height:_height,...feeData}=snapshot.feeData;
+  const first=feeData.items![0];
+  return {...snapshot,serviceType:service.service_type_id as 2|5,key:JSON.stringify([snapshot.key,service.service_type_id]),feeData:{...feeData,...(service.service_type_id===2?{length:first.length,width:first.width,height:first.height}:{})}};
+}
+export const isGhnUnsupportedQuote=(cause:unknown)=>Boolean(cause&&typeof cause==='object'&&'code'in cause&&cause.code==='GHN_SERVICE_UNSUPPORTED');
 type Read = <T>(action: string, body: Record<string, unknown>) => Promise<T>;
-type CacheEntry<T> = { promise: Promise<T>; ready: boolean; value?: T };
+type CacheEntry<T> = { promise: Promise<T>; ready: boolean; value?: T; expiresAt?:number; strict?:boolean };
 type Job = { generation: number; run: () => Promise<void>; cancel: () => void };
-export type GhnShopQuote = GhnFeeQuote & { shop: GhnQuoteShop; service: GhnQuoteService; services: GhnQuoteService[]; snapshotKey: string };
+export type GhnShopQuote = GhnFeeQuote & { shop: GhnQuoteShop; service: GhnQuoteService; services: GhnQuoteService[]; snapshotKey: string; snapshot?:GhnQuoteSnapshot };
 export type GhnQuoteComparison = { quotes: GhnShopQuote[]; failures: { shop: GhnQuoteShop; service?: GhnQuoteService; message: string }[]; noServices: GhnQuoteShop[] };
 /** Partial comparisons are never a global cheapest recommendation. */
 export function findGhnAutomaticCheapest(comparison: GhnQuoteComparison | null, snapshotKey: string | undefined, now = Date.now()): GhnShopQuote | undefined {
@@ -196,21 +241,26 @@ export function createGhnQuoteSession(read: Read, options: { now?: () => number;
     } });
     drain();
   });
-  const cached = <T>(cache: Map<string, CacheEntry<T>>, key: string, run: () => Promise<T>, token: number) => {
+  const cached = <T>(cache: Map<string, CacheEntry<T>>, key: string, run: () => Promise<T>, token: number,strict=false) => {
     if (token !== generation) return Promise.reject<T>(new StaleGhnQuoteError());
     const existing = cache.get(key);
     if (existing) return existing.promise;
     const entry: CacheEntry<T> = { promise: Promise.resolve(undefined as T), ready: false };
-    entry.promise = schedule(run, token).then(value => { entry.ready = true; entry.value = value; return value; }).catch(cause => { if (cache.get(key) === entry) cache.delete(key); throw cause; });
+    entry.promise = schedule(run, token).then(value => {
+      // Timestamp this request's own entry only after the scheduler has checked
+      // its generation. A late completion must never extend a replacement entry.
+      if(strict){entry.strict=true;entry.expiresAt=now()+Math.min(ttlMs,GHN_QUOTE_TTL_MS);}
+      entry.ready = true; entry.value = value; return value;
+    }).catch(cause => { if (cache.get(key) === entry) cache.delete(key); throw cause; });
     cache.set(key, entry);
     return entry.promise;
   };
   const quoteDetail = (shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) => {
-    if (!isGhnServiceEligible(service, snapshot.feeData.weight, snapshot.feeData.items?.length || 1)) return Promise.reject<GhnFeeQuote>(new Error('Dịch vụ GHN không phù hợp với khối lượng hoặc số kiện hàng.'));
+    if (!isGhnServiceEligible(service, snapshot.feeData.weight, snapshot.feeData.items?.length || 1, snapshot.orderMode,snapshot.entryMode)) return Promise.reject<GhnFeeQuote>(new Error('Dịch vụ GHN không phù hợp với loại hàng đã chọn.'));
     const key = quoteKey(shopId, service, snapshot), existing = quotes.get(key);
     if (existing?.ready && !isGhnQuoteFresh(existing.value, now())) quotes.delete(key);
     return cached(quotes, key, async () => {
-      const result = snapshot.newAddress ? await read<unknown>('preview_new_address',{shopId,snapshot,service}) : await read<unknown>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
+      const result = snapshot.newAddress ? await read<unknown>('preview_new_address',{shopId,snapshot,service}) : await read<unknown>('calculate_fee', { shopId, ...(snapshot.orderMode?{orderMode:snapshot.orderMode}:{}),...(snapshot.entryMode?{entryMode:snapshot.entryMode}:{}), feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
       return parseGhnFeeQuote(result, now(), ttlMs);
     }, token);
   };
@@ -226,18 +276,22 @@ export function createGhnQuoteSession(read: Read, options: { now?: () => number;
       generation++;
       for (const job of queue.splice(0)) job.cancel();
       quotes.clear();
-      for (const [key, entry] of services) if (resetServices || !entry.ready) services.delete(key);
+      for (const [key, entry] of services) if (resetServices || !entry.ready || entry.strict&&(!entry.value?.length || (entry.expiresAt??0)<=now())) services.delete(key);
     },
-    services(shopId: string, districtId: number, token = generation) {
-      return cached(services, JSON.stringify([shopId, districtId]), async () => {
+    services(shopId: string, districtId: number, token = generation,strict=false) {
+      const key=JSON.stringify([shopId,districtId,strict]),existing=services.get(key);
+      if(strict&&existing?.ready&&(existing.expiresAt??0)<=now())services.delete(key);
+      return cached(services, key, async () => {
         const rows = await read<GhnQuoteService[]>('get_services', { shopId, toDistrictId: districtId });
+        if(strict&&(!Array.isArray(rows)||rows.some(row=>!row||typeof row!=='object'||!Number.isSafeInteger(row.service_type_id)||([2,5].includes(row.service_type_id)&&!integer(row.service_id,1,Number.MAX_SAFE_INTEGER)))))throw new Error('Danh mục dịch vụ GHN chưa hợp lệ. Vui lòng thử lại.');
         const seen = new Set<string>();
-        return rows.filter(row => {
+        const filtered=rows.filter(row => {
           const key = ghnServiceChoiceKey(row);
           if ((row.service_type_id !== 2 && row.service_type_id !== 5) || !integer(row.service_id, 1, Number.MAX_SAFE_INTEGER) || seen.has(key)) return false;
           seen.add(key); return true;
         });
-      }, token);
+        return filtered;
+      }, token,strict);
     },
     quoteDetail, peekQuoteDetail,
     quote(shopId: string, service: GhnQuoteService, snapshot: GhnQuoteSnapshot, token = generation) { return quoteDetail(shopId, service, snapshot, token).then(quote => quote.total); },
@@ -248,16 +302,18 @@ export function createGhnQuoteSession(read: Read, options: { now?: () => number;
 }
 export type GhnQuoteSession = ReturnType<typeof createGhnQuoteSession>;
 
-export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQuoteShop[], snapshot: GhnQuoteSnapshot): Promise<GhnQuoteComparison> {
+export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQuoteShop[], snapshot: GhnQuoteSnapshot, preference?:{shopId:string;service:GhnQuoteService}): Promise<GhnQuoteComparison> {
   const token = session.capture(), result: GhnQuoteComparison = { quotes: [], failures: [], noServices: [] };
   // Fan-out is queued by the shared session, including automatic selected fees.
   await Promise.all(shops.map(async shop => {
     try {
-      const services = eligibleGhnServices((snapshot.newAddress ? [{service_id:snapshot.feeData.items!.length>1||snapshot.feeData.weight>=20000?5:2,service_type_id:snapshot.feeData.items!.length>1||snapshot.feeData.weight>=20000?5:2,short_name:'GHN'}] : await session.services(String(shop._id), snapshot.feeData.to_district_id!, token)), snapshot.feeData.weight, snapshot.feeData.items?.length || 1);
+      const type=snapshot.orderMode ? snapshot.orderMode==='HEAVY'?5:2 : (snapshot.feeData.items?.length??1)>1||snapshot.feeData.weight>=20000?5:2;
+      const retry=async<T>(run:()=>Promise<T>):Promise<T>=>{try{return await run();}catch(cause){if(snapshot.entryMode!=='PACKAGES'||cause instanceof StaleGhnQuoteError||isGhnUnsupportedQuote(cause))throw cause;if(!session.current(token))throw new StaleGhnQuoteError();return run();}};
+      const services = eligibleGhnServices((snapshot.newAddress ? (snapshot.entryMode==='PACKAGES'?[2,5]:[type]).map(value=>({service_type_id:value,short_name:value===5?'GHN hàng nặng':'GHN hàng nhẹ'})) : await retry(()=>session.services(String(shop._id), snapshot.feeData.to_district_id!, token,snapshot.entryMode==='PACKAGES'))), snapshot.feeData.weight, snapshot.feeData.items?.length || 1,snapshot.orderMode,snapshot.entryMode);
       if (!services.length) result.noServices.push(shop);
       await Promise.all(services.map(async service => {
-        try { const quote = await session.quoteDetail(String(shop._id), service, snapshot, token); result.quotes.push({ shop, service, ...quote, services, snapshotKey: snapshot.key }); }
-        catch (cause) { if (cause instanceof StaleGhnQuoteError) throw cause; result.failures.push({ shop, service, message: cause instanceof Error ? cause.message : 'Không tính được cước.' }); }
+        try { const candidate=buildGhnServiceSnapshot(snapshot,service);const quote = await retry(()=>session.quoteDetail(String(shop._id), service, candidate, token)); result.quotes.push({ shop, service, ...quote, services, snapshotKey: snapshot.key,...(snapshot.entryMode?{snapshot:candidate}:{}) }); }
+        catch (cause) { if (cause instanceof StaleGhnQuoteError) throw cause;if(snapshot.entryMode==='PACKAGES'&&isGhnUnsupportedQuote(cause))return; result.failures.push({ shop, service, message: cause instanceof Error ? cause.message : 'Không tính được cước.' }); }
       }));
     } catch (cause) { if (cause instanceof StaleGhnQuoteError) throw cause; result.failures.push({ shop, message: cause instanceof Error ? cause.message : 'Không tải được dịch vụ.' }); }
   }));
@@ -269,7 +325,8 @@ export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQ
     result.failures.push({ shop: row.shop, service: row.service, message: 'Báo giá hết hạn trong lúc so sánh. Bấm Tính lại cước hoặc chọn thủ công.' });
     return false;
   });
-  result.quotes.sort((a, b) => a.total - b.total || a.shop._id - b.shop._id || a.service.service_type_id - b.service.service_type_id || a.service.service_id - b.service.service_id);
+  const preferred=(row:GhnShopQuote)=>preference&&String(row.shop._id)===preference.shopId&&row.service.service_id===preference.service.service_id&&row.service.service_type_id===preference.service.service_type_id?0:1;
+  result.quotes.sort((a, b) => a.total - b.total || (snapshot.entryMode==='PACKAGES'?preferred(a)-preferred(b)||Number(b.shop._id===shops[0]?._id)-Number(a.shop._id===shops[0]?._id)||a.service.service_type_id-b.service.service_type_id||(a.service.service_id??0)-(b.service.service_id??0)||a.shop._id-b.shop._id:a.shop._id - b.shop._id || a.service.service_type_id - b.service.service_type_id || (a.service.service_id??0) - (b.service.service_id??0)));
   result.failures.sort((a, b) => a.shop._id - b.shop._id || (a.service?.service_id || 0) - (b.service?.service_id || 0));
   result.noServices.sort((a, b) => a._id - b._id);
   return result;

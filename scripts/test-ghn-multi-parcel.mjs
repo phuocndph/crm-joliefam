@@ -87,14 +87,14 @@ await check('UNKNOWN evidence rejects missing, multiplied, redistributed or malf
   validateGhnPackedParcel(submitted);assert.equal(ghnMultiParcelEvidenceMatches(submitted,[...submitted.items].reverse()),true);
   for(const value of [undefined,[],[submitted.items[0]],submitted.items.map((row,index)=>({...row,weight:row.weight+(index===0?1:-1)})),submitted.items.map(row=>({...row,quantity:2})),submitted.items.map(row=>({...row,weight:String(row.weight)}))])assert.equal(ghnMultiParcelEvidenceMatches(submitted,value),false);
 });
-await check('actual parcel handlers add, copy and remove independently and retain stable keys',()=>{
+await check('actual parcel handlers add blank measured parcels and remove independently with stable keys',()=>{
   let sequence=0;const context=vm.createContext({crypto:{randomUUID:()=>`test-parcel-${++sequence}`},locked:false,parcels:[],requestAnimationFrame:()=>{},dialogContent:{current:null}});
   context.setParcels=update=>context.parcels=typeof update==='function'?update(context.parcels):update;
   context.setWeightFollowsProducts=()=>{};context.setMultiEditorOpen=()=>{};Object.defineProperty(context,'effectiveParcels',{get:()=>context.parcels});
   for(const name of ['blankParcel','parcelInputId','changeParcel','addParcel','removeParcel'])evaluate(`globalThis.${name}=${initializers.get(name)}`,context);
   context.parcels=[context.blankParcel()];const first=context.parcels[0].id;
-  context.changeParcel(first,{weightInput:'1.000',weight:1000,length:40,width:30,height:20});context.addParcel(context.parcels[0]);
-  assert.equal(context.parcels.length,2);assert.equal(context.parcels[0].id,first);assert.notEqual(context.parcels[1].id,first);assert.equal(context.parcels[1].weightInput,'1.000');
+  context.changeParcel(first,{weightInput:'1.000',weight:1000,length:40,width:30,height:20});context.addParcel();
+  assert.equal(context.parcels.length,2);assert.equal(context.parcels[0].id,first);assert.notEqual(context.parcels[1].id,first);assert.equal(context.parcels[1].weightInput,'');
   const second=context.parcels[1].id;context.changeParcel(second,{weight:2000,weightInput:'2.000'});assert.equal(context.parcels[0].weight,1000);
   context.removeParcel(first);assert.equal(context.parcels.length,1);assert.equal(context.parcels[0].id,second);context.removeParcel(second);assert.equal(context.parcels.length,1);
   context.locked=true;context.addParcel();assert.equal(context.parcels.length,1);

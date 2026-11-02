@@ -50,12 +50,31 @@ const packedParcelItemName = (content, index = 0, count = 1) => {
   if (/^[\uD800-\uDBFF]$/.test(prefix.charAt(prefix.length - 1))) prefix = prefix.slice(0, -1);
   return `${prefix}…`;
 };
+const fixtureShifts=[{id:901,title:'Ca lấy hàng thử 1',from_time:25200,to_time:43200},{id:902,title:'Ca lấy hàng thử 2',from_time:129600,to_time:151200}];
+const modeManifestValid=(data,mode)=>{
+  const dims=['length','width','height'];
+  if(!['LIGHT','HEAVY'].includes(mode)||!Array.isArray(data.items)||data.items.length<1||data.items.length>100||!Number.isInteger(data.weight)||data.weight<1||data.service_type_id!==(mode==='LIGHT'?2:5))return false;
+  if(!data.items.every(row=>row&&typeof row.name==='string'&&row.name.trim()&&Number.isInteger(row.weight)&&row.weight>=1&&row.weight<=50000&&Number.isInteger(row.quantity)&&row.quantity>=1&&row.quantity<=1000))return false;
+  if(mode==='LIGHT')return data.weight<=50000&&dims.every(field=>Number.isInteger(data[field])&&data[field]>=1&&data[field]<=200)&&data.items.every(row=>dims.every(field=>row[field]===undefined));
+  return dims.every(field=>data[field]===undefined)&&data.items.every(row=>row.quantity===1&&dims.every(field=>Number.isInteger(row[field])&&row[field]>=1&&row[field]<=200))&&data.items.reduce((sum,row)=>sum+row.weight,0)===data.weight;
+};
+// PACKAGES is a distinct opt-in contract. Physical parcels are never products,
+// and a many-parcel order cannot masquerade as a single type-2 package.
+const packagesManifestValid=data=>{
+  const dims=['length','width','height'],rows=data.items;
+  if(![2,5].includes(data.service_type_id)||!Array.isArray(rows)||rows.length<1||rows.length>100||!Number.isInteger(data.weight)||data.weight<1)return false;
+  if(!rows.every((row,index)=>row&&row.name===`Kiện ${index+1}`&&row.quantity===1&&row.code===undefined&&(row.price===undefined||row.price===0)&&Number.isInteger(row.weight)&&row.weight>=1&&row.weight<=50000&&dims.every(field=>Number.isInteger(row[field])&&row[field]>=1&&row[field]<=200)))return false;
+  if(rows.reduce((sum,row)=>sum+row.weight,0)!==data.weight)return false;
+  return data.service_type_id===2?rows.length===1&&dims.every(field=>data[field]===rows[0][field]):dims.every(field=>data[field]===undefined);
+};
 let mode = 'ENABLED', revision = 1, primary = '123', allowed = ['123', '456'];
 let addressMode = 'ready', goongMode = 'ENABLED', goongRevision = 1;
 const addressCounters = { suggestions: 0, status: 0 };
 let nextCreateUnknown = false, nextCreateRejected = false, reconcileSuccess = false, selectedAi = 'local';
 let quoteScenario = 'default', quoteFailure = '', quoteDelayShop = '', quoteNoServices = '', quoteSharedServiceId = false;
 let quoteFailNextPair = '', quotePriceDelta = 0;
+let packagesPriceMode='light-cheaper',packagesUnsupported='';
+const packagesBaseFee=(shop,type,weight)=>packagesPriceMode==='equal'?23000:packagesPriceMode==='heavy-cheaper'?(type===5?shop==='456'?17000:19000:shop==='123'?25000:29000):packagesPriceMode==='weight-service'?weight*4:(type===2?shop==='123'?21000:25000:shop==='123'?31000:35000);
 let quoteBreakdown = 'default';
 // Synthetic scenario only, deliberately not a real GHN tariff or insurance rule.
 const fixtureFee = (base, cod, insurance, failedCod) => {
@@ -91,7 +110,8 @@ resetTracking();
 const orderTracking = id => [...trackingRows.values()].filter(row => row.order_id === id);
 const orderCodes = id => orderTracking(id).map(row => row.ghn_order_code).sort();
 const hydrateOrders = () => fixtureOrders.map(order => ({ ...order, ghn_tracking: orderTracking(order.id).map(({ id, ghn_order_code }) => ({ id, ghn_order_code })) }));
-const counters = { reads: 0, createRequests: 0, dispatchedCreates: 0, replays: 0, reconciles: 0, printRequests: 0, printed: [], discovery: 0, blocked: 0, serviceReads: 0, feeReads: 0, quoteActive: 0, quoteMaxActive: 0, serviceByShop: {}, feeByPair: {}, feeByServicePair: {}, linkReads: 0, linkRequests: 0, imports: 0, detached: 0, deleted: 0, trackingPrintRequests: 0, trackingPrinted: [] };
+let oldDirectoryHoldNext='',oldDirectoryFailNext='';const oldDirectoryHeld=[];
+const counters = { oldDistrictReads:0,oldWardReads:0,reads: 0, createRequests: 0, dispatchedCreates: 0, replays: 0, reconciles: 0, printRequests: 0, printed: [], discovery: 0, blocked: 0, serviceReads: 0, feeReads: 0, quoteActive: 0, quoteMaxActive: 0, serviceByShop: {}, feeByPair: {}, feeByServicePair: {}, linkReads: 0, linkRequests: 0, imports: 0, detached: 0, deleted: 0, trackingPrintRequests: 0, trackingPrinted: [] };
 const status = () => ({ mode, revision, source: mode === 'DISABLED' ? 'disabled' : mode === 'ENABLED' ? 'saved' : 'server_env', configured: mode !== 'DISABLED', configured_shop_count: mode === 'DISABLED' ? 0 : allowed.length, has_saved_key: mode === 'ENABLED', primary_shop_id: mode === 'DISABLED' ? '' : primary, allowed_shop_ids: mode === 'DISABLED' ? [] : allowed });
 const aiStatus = () => ({ selected: selectedAi, providers: ['f5quota', 'beeknoee'].map(provider => ({ provider, configured: false, model: 'fixture-model', base_url: 'https://fixture.invalid', protocol: provider === 'f5quota' ? 'responses' : 'gemini' })) });
 const summary = () => ({ fixture: true, counters, shops: allowed, quoteControls: { quoteScenario, quoteFailure, quoteDelayShop, quoteNoServices, quoteSharedServiceId, quoteFailNextPair, quotePriceDelta }, attemptControls: { printFailNext, printDelay, createsDelay, statusDelay }, trackingControls: { linkFail, linkConflict, linkDelay, importFailPartial, trackingPrintFail, refreshFailed }, tracking: [...trackingRows.values()].map(({ id, ghn_order_code, order_id, cod_amount }) => ({ id, code: ghn_order_code, orderId: order_id, cod: cod_amount })), attempts: [...attempts.values()].map(({ result, shopId, serviceId, serviceType, weight, parcelCount, parcels, productLines, orderNumber }) => ({ status: result.attempt_status, reference: result.reference, shopId, serviceId, serviceType, weight, parcelCount, parcels, productLines, orderNumber })) });
@@ -176,33 +196,48 @@ app.post('/api/local-functions/ghn-tracking', async (req, res) => {
     if (fail) return res.status(503).json({ message: 'Lỗi tính cước thử nghiệm có kiểm soát.' });
   }
   let data;
-  if (body.action === 'get_shops') data = fixtureShops.filter(item => allowed.includes(String(item._id)));
+  if (body.action === 'get_shops') data = fixtureShops.filter(item => allowed.includes(String(item._id))).sort((a,b)=>Number(String(b._id)===primary)-Number(String(a._id)===primary));
   else if (body.action === 'get_provinces') data = provinces;
-  else if (body.action === 'get_districts') data = Number(body.provinceId) === 202 ? districts : [];
-  else if (body.action === 'get_wards') data = Number(body.districtId) === 1444 ? wards : [];
-  else if (body.action === 'get_services') data = quoteNoServices === shop ? [] : [{ service_id: 53320, short_name: 'Giao tiêu chuẩn', service_type_id: 2 }, { service_id: quoteSharedServiceId ? 53320 : 100039, short_name: 'Giao tiết kiệm', service_type_id: 5 }];
+  else if (body.action === 'get_districts') { counters.oldDistrictReads++;if(oldDirectoryFailNext==='get_districts'){oldDirectoryFailNext='';return res.status(503).json({message:'Danh mục quận thử nghiệm tạm lỗi.'});}const rows=Number(body.provinceId)===202?districts:[];if(oldDirectoryHoldNext==='get_districts'){oldDirectoryHoldNext='';await new Promise(resolve=>oldDirectoryHeld.push(resolve));data=rows.map(row=>({...row,DistrictName:'Phản hồi quận cũ'}));}else data=rows; }
+  else if (body.action === 'get_wards') { counters.oldWardReads++;const rows=Number(body.districtId)===1444?wards:[];if(oldDirectoryHoldNext==='get_wards'){oldDirectoryHoldNext='';await new Promise(resolve=>oldDirectoryHeld.push(resolve));data=rows.map(row=>({...row,WardName:'Phản hồi phường cũ'}));}else data=rows; }
+  else if(body.action==='get_pick_shifts')data=fixtureShifts;
+  else if(body.action==='get_new_provinces')data=[{_id:202,name:'Tỉnh Thử Nghiệm',extension_names:['Tinh Thu Nghiem']}];
+  else if(body.action==='get_new_wards')data=Number(body.provinceId)===202?[{_id:20308,parent_id:202,name:'Phường Dữ Liệu Thử',extension_names:['Phuong Du Lieu Thu']}]:[];
+  else if (body.action === 'get_services') data = quoteNoServices === 'all' || quoteNoServices === shop ? [] : [{ service_id: 53320, short_name: 'Giao tiêu chuẩn', service_type_id: 2 }, ...(quoteNoServices==='type5'?[]:[{ service_id: quoteSharedServiceId ? 53320 : 100039, short_name: 'Giao tiết kiệm', service_type_id: 5 }])];
   else if (body.action === 'calculate_fee') {
     const feeData = body.feeData || {}, item = feeData.items?.[0], parcelCount=feeData.items?.length||1;
     const dimensionFields = ['length', 'width', 'height'];
     const rootDimensions = dimensionFields.filter(field => feeData[field] !== undefined);
     if (rootDimensions.length && rootDimensions.length !== dimensionFields.length) return res.status(400).json({ message: 'Kích thước kiện phải có đủ dài, rộng, cao (giả lập).' });
+    const physicalWeight=Number(feeData.weight),heavy=body.orderMode?body.orderMode==='HEAVY':physicalWeight>=20000||parcelCount>1,service5=Number(feeData.service_type_id)===5;
+    if(body.entryMode==='PACKAGES'){
+      if(!packagesManifestValid(feeData))return res.status(400).json({message:'PACKAGES manifest invalid (fixture)'});
+      if(packagesUnsupported===`${shop}:${feeData.service_type_id}`)return res.status(422).json({message:'Dịch vụ không hỗ trợ tuyến/kiện này (giả lập).',code:'GHN_SERVICE_UNSUPPORTED'});
+    }else if(body.orderMode){if(!modeManifestValid(feeData,body.orderMode))return res.status(400).json({message:'Mode manifest invalid (fixture)'});}else{
     if (feeData.items) {
       const matchesParcel = Array.isArray(feeData.items) && parcelCount>=1 && parcelCount<=100 && feeData.items.every((row,index)=>row?.name===(parcelCount===1?'Kiện hàng đã đóng gói':`Kiện hàng đã đóng gói ${index+1}/${parcelCount}`)&&row.quantity===1&&Number.isInteger(row.weight)&&row.weight>=1&&row.weight<=50000&&dimensionFields.every(field=>Number.isInteger(row[field])&&row[field]>=1&&row[field]<=200))
         && feeData.items.reduce((sum,row)=>sum+row.weight,0)===feeData.weight && (parcelCount===1?rootDimensions.length===3&&dimensionFields.every(field=>item[field]===feeData[field]):rootDimensions.length===0);
       if (!matchesParcel) return res.status(400).json({ message: 'Kiện trong báo giá phải khớp kiện đã cân, đo (giả lập).' });
     } else if (rootDimensions.length) return res.status(400).json({ message: 'Báo giá đầy đủ cần kiện đã đóng gói chuẩn (giả lập).' });
     // Final pricing deliberately reads the canonical item, never only root weight.
-    const physicalWeight = feeData.items?.reduce((sum,row)=>sum+row.weight,0)??Number(feeData.weight);
-    if(!Number.isInteger(physicalWeight)||physicalWeight<1||physicalWeight>50000)return res.status(400).json({message:'Tổng cân nặng tối đa 50 kg (giả lập).'});
-    const heavy = physicalWeight >= 20000 || parcelCount>1, service5 = Number(feeData.service_type_id) === 5;
     if ((!heavy && service5) || (heavy && !service5)) return res.status(400).json({ message: 'Loại dịch vụ không phù hợp khối lượng kiện (giả lập).' });
-    const total = quoteScenario === 'weight-service'
+
+    }
+    const total = body.entryMode==='PACKAGES'?packagesBaseFee(shop,Number(feeData.service_type_id),physicalWeight):quoteScenario === 'weight-service'
       ? physicalWeight * 4
       : quoteSharedServiceId && service5 ? shop === '123' ? 19000 : 17000 : shop === '123' ? 25000 : 29000;
     data = fixtureFee(total + priceDelta,feeData.cod_value,feeData.insurance_value,feeData.cod_failed_amount);
   }
   else { counters.blocked++; return res.status(409).json({ message: 'Thao tác ngoài phạm vi đọc của fixture.' }); }
   res.json({ success: true, data, source: 'fixture', local_only: true });
+});
+app.post('/api/ghn-orders/preview',(req,res)=>{
+  const input=req.body||{},data=input.orderData||{};
+  if(input.addressMode!=='NEW2'||Number(input.provinceId)!==202||Number(input.newWardId)!==20308||!allowed.includes(String(input.shopId))||!(input.entryMode==='PACKAGES'?packagesManifestValid(data):modeManifestValid(data,input.orderMode)))return res.status(400).json({message:'Preview invalid (fixture)'});
+  if(input.entryMode==='PACKAGES'&&packagesUnsupported===`${input.shopId}:${data.service_type_id}`)return res.status(422).json({message:'Dịch vụ không hỗ trợ (giả lập).',code:'GHN_SERVICE_UNSUPPORTED'});
+  if(data.pick_shift&&!fixtureShifts.some(row=>row.id===data.pick_shift[0]))return res.status(400).json({message:'Pick shift invalid (fixture)'});
+  const base=input.entryMode==='PACKAGES'?packagesBaseFee(String(input.shopId),data.service_type_id,data.weight):quoteScenario==='weight-service'?data.weight*4:String(input.shopId)==='123'?25000:29000;
+  res.json({total:fixtureFee(base+quotePriceDelta,data.cod_amount,data.insurance_value,data.cod_failed_amount).total});
 });
 app.post('/api/ghn-orders', async (req, res) => {
   counters.createRequests++;
@@ -222,16 +257,16 @@ app.post('/api/ghn-orders', async (req, res) => {
     counters.replays++; return res.json({ success: true, data: previous.result });
   }
   const item = orderData.items?.[0], dimensions = ['length', 'width', 'height'], parcelCount=orderData.items?.length||0;
-  const expectedServiceType = Number(orderData.weight) < 20000 && parcelCount===1 ? 2 : 5;
-  const canonicalParcel = Array.isArray(orderData.items) && parcelCount>=1 && parcelCount<=100 && orderData.items.every((row,index)=>row?.name===packedParcelItemName(orderData.content,index,parcelCount)&&row.quantity===1&&row.price===0&&Number.isInteger(row.weight)&&row.weight>=1&&row.weight<=50000&&dimensions.every(field=>Number.isInteger(row[field])&&row[field]>=1&&row[field]<=200))
+  const expectedServiceType = input.entryMode==='PACKAGES'?orderData.service_type_id:input.orderMode ? input.orderMode==='LIGHT'?2:5 : Number(orderData.weight) < 20000 && parcelCount===1 ? 2 : 5;
+  const canonicalParcel = input.entryMode==='PACKAGES'?packagesManifestValid(orderData):input.orderMode?modeManifestValid(orderData,input.orderMode):Array.isArray(orderData.items) && parcelCount>=1 && parcelCount<=100 && orderData.items.every((row,index)=>row?.name===packedParcelItemName(orderData.content,index,parcelCount)&&row.quantity===1&&row.price===0&&Number.isInteger(row.weight)&&row.weight>=1&&row.weight<=50000&&dimensions.every(field=>Number.isInteger(row[field])&&row[field]>=1&&row[field]<=200))
     && Number.isInteger(orderData.weight) && orderData.weight >= 1 && orderData.weight <= 50000
     && (parcelCount===1?dimensions.every(field => item[field]===orderData[field]):dimensions.every(field=>orderData[field]===undefined))
     && orderData.items.reduce((sum,row)=>sum+row.weight,0) === orderData.weight && orderData.service_type_id === expectedServiceType;
-  if (!/^(?:0\d{9}|\+84\d{9})$/.test(String(orderData.to_phone || '')) || !String(orderData.to_name || '').trim() || Number(input.provinceId) !== 202 || Number(orderData.to_district_id) !== 1444 || orderData.to_ward_code !== '020308' || !canonicalParcel) return res.status(400).json({ message: 'Thông tin tạo đơn GHN không hợp lệ (giả lập).' });
+  if (!/^(?:0\d{9}|\+84\d{9})$/.test(String(orderData.to_phone || '')) || !String(orderData.to_name || '').trim() || Number(input.provinceId) !== 202 || (input.addressMode==='NEW2'?Number(input.newWardId)!==20308:Number(orderData.to_district_id)!==1444||orderData.to_ward_code!=='020308') || !canonicalParcel) return res.status(400).json({ message: 'Thông tin tạo đơn GHN không hợp lệ (giả lập).' });
   counters.dispatchedCreates++;
   const sequence = counters.dispatchedCreates;
-  const syntheticFee=fixtureFee((quoteScenario==='weight-service'?orderData.weight*4:quoteSharedServiceId&&expectedServiceType===5?shopId==='123'?19000:17000:shopId==='123'?25000:29000)+quotePriceDelta,orderData.cod_amount,orderData.insurance_value,orderData.cod_failed_amount).total;
-  const row = { fingerprint, sequence, shopId, serviceId: orderData.service_id, serviceType: orderData.service_type_id, weight: orderData.weight, parcelCount, parcels:orderData.items, productLines:input.productLines, orderNumber:input.orderNumber, orderId: input.orderId || null, result: { attempt_status: nextCreateUnknown ? 'UNKNOWN' : nextCreateRejected ? 'REJECTED' : 'SUCCESS', reference: `FIXTURE-REF-${String(sequence).padStart(4, '0')}`, request_key: key, total_fee:syntheticFee, ...(nextCreateRejected?{message:'GHN giả lập từ chối. Sửa thông tin và gửi lại, không có vận đơn thật.'}:{}) } };
+  const syntheticFee=fixtureFee((input.entryMode==='PACKAGES'?packagesBaseFee(shopId,orderData.service_type_id,orderData.weight):quoteScenario==='weight-service'?orderData.weight*4:quoteSharedServiceId&&expectedServiceType===5?shopId==='123'?19000:17000:shopId==='123'?25000:29000)+quotePriceDelta,orderData.cod_amount,orderData.insurance_value,orderData.cod_failed_amount).total;
+  const row = { fingerprint, sequence, shopId, orderMode:input.orderMode, serviceId: orderData.service_id, serviceType: orderData.service_type_id, weight: orderData.weight, parcelCount, parcels:orderData.items, productLines:input.productLines, orderNumber:input.orderNumber, orderId: input.orderId || null, result: { attempt_status: nextCreateUnknown ? 'UNKNOWN' : nextCreateRejected ? 'REJECTED' : 'SUCCESS', reference: `FIXTURE-REF-${String(sequence).padStart(4, '0')}`, request_key: key, total_fee:syntheticFee, ...(nextCreateRejected?{message:'GHN giả lập từ chối. Sửa thông tin và gửi lại, không có vận đơn thật.'}:{}) } };
   nextCreateUnknown = false; nextCreateRejected = false;
   if (row.result.attempt_status === 'SUCCESS') created(row);
   attempts.set(key, row);
@@ -372,7 +407,7 @@ app.get('/api/ai/providers', (_req, res) => res.json(aiStatus()));
 app.get('/api/fixture-state', (_req, res) => res.json(summary()));
 app.use('/api', (req, res) => { if (req.method === 'GET') return res.json([]); counters.blocked++; res.status(409).json({ message: 'Thao tác ngoài phạm vi fixture thử nghiệm.' }); });
 
-const result = await build({ root, configFile: false, envDir: false, publicDir: false, logLevel: 'warn', plugins: [react()], resolve: { alias: { '@': path.join(root, 'src') }, dedupe: ['react', 'react-dom', 'react/jsx-runtime'] }, define: { 'import.meta.env.VITE_BACKEND_MODE': JSON.stringify('local'), 'import.meta.env.VITE_LOCAL_API_URL': JSON.stringify(''), 'import.meta.env.VITE_LOCAL_DEMO_AUTH': JSON.stringify('false'), 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(''), 'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('') }, build: { write: false, sourcemap: false, chunkSizeWarningLimit: 3000 } });
+const result = await build({ root, configFile: false, envDir: false, publicDir: false, logLevel: 'warn', plugins: [{name:'synthetic-linked-order-host',enforce:'pre',transform(code,id){if(!id.replaceAll('\\','/').endsWith('/src/pages/OrderManagement.tsx'))return;const target='onClick={() => openGhn()}';assert.ok(code.includes(target));return code.replace(target,'onClick={() => openGhn((globalThis as any).__GHN_SYNTHETIC_LINKED_ORDER__)}');}},react()], resolve: { alias: { '@': path.join(root, 'src') }, dedupe: ['react', 'react-dom', 'react/jsx-runtime'] }, define: { 'import.meta.env.VITE_BACKEND_MODE': JSON.stringify('local'), 'import.meta.env.VITE_LOCAL_API_URL': JSON.stringify(''), 'import.meta.env.VITE_LOCAL_DEMO_AUTH': JSON.stringify('false'), 'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(''), 'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify('') }, build: { write: false, sourcemap: false, chunkSizeWarningLimit: 3000 } });
 const output = (Array.isArray(result) ? result : [result]).flatMap(bundle => bundle.output);
 const assets = new Map(output.map(item => ['/' + item.fileName, item.type === 'chunk' ? item.code : item.source]));
 assert.ok(assets.has('/index.html'));
@@ -418,12 +453,21 @@ await new Promise(resolve => {
       else if (command === 'quotes-fail-456') { quoteFailure = '456'; console.log('FIXTURE_QUOTES_FAIL_456_READY'); }
       else if (command === 'quotes-all-fail') { quoteFailure = 'all'; console.log('FIXTURE_QUOTES_ALL_FAIL_READY'); }
       else if (command === 'quotes-no-services-456') { quoteNoServices = '456'; console.log('FIXTURE_QUOTES_NO_SERVICES_456_READY'); }
+      else if (command === 'quotes-no-services-all') { quoteNoServices = 'all'; console.log('FIXTURE_QUOTES_NO_SERVICES_ALL_READY'); }
+      else if (command === 'quotes-only-type2') { quoteNoServices = 'type5'; console.log('FIXTURE_QUOTES_ONLY_TYPE2_READY'); }
       else if (command === 'quotes-delay-456' || command === 'quotes-delay-123') { quoteDelayShop = command.endsWith('456') ? '456' : '123'; console.log('FIXTURE_QUOTES_DELAY_READY ' + quoteDelayShop); }
       else if (command === 'quotes-shared-service-id') { quoteSharedServiceId = true; console.log('FIXTURE_QUOTES_SHARED_SERVICE_ID_READY'); }
       else if (/^quotes-fail-next-(123|456)-(2|5)$/.test(command)) { quoteFailNextPair = command.slice('quotes-fail-next-'.length).replace('-', ':'); console.log('FIXTURE_QUOTES_FAIL_NEXT_READY ' + quoteFailNextPair); }
       else if (command === 'quotes-price-plus-1000') { quotePriceDelta += 1000; console.log('FIXTURE_QUOTES_PRICE_READY ' + quotePriceDelta); }
-      else if (command === 'quotes-reset') { quoteScenario = 'default'; quoteFailure = ''; quoteDelayShop = ''; quoteNoServices = ''; quoteSharedServiceId = false; quoteFailNextPair = ''; quotePriceDelta = 0; quoteBreakdown='default'; console.log('FIXTURE_QUOTES_RESET_READY'); }
+      else if (/^packages-(light-cheaper|heavy-cheaper|equal|weight-service)$/.test(command)) { packagesPriceMode=command.slice('packages-'.length);console.log('FIXTURE_PACKAGES_PRICE_READY '+packagesPriceMode); }
+      else if (/^packages-unsupported-(123|456)-(2|5)$/.test(command)) { packagesUnsupported=command.slice('packages-unsupported-'.length).replace('-',':');console.log('FIXTURE_PACKAGES_UNSUPPORTED_READY '+packagesUnsupported); }
+      else if (command === 'quotes-reset') { quoteScenario = 'default'; quoteFailure = ''; quoteDelayShop = ''; quoteNoServices = ''; quoteSharedServiceId = false; quoteFailNextPair = ''; quotePriceDelta = 0; quoteBreakdown='default';packagesPriceMode='light-cheaper';packagesUnsupported=''; console.log('FIXTURE_QUOTES_RESET_READY'); }
       else if (/^address-(ready|delay|error|empty|unconfigured|two-level)$/.test(command)) { addressMode = command.slice('address-'.length); console.log('FIXTURE_ADDRESS_READY ' + addressMode); }
+      else if (command === 'linked-order-six-million') { secondOrder.total_amount=6000000;secondOrder.total_paid=5900000;console.log('FIXTURE_LINKED_ORDER_SIX_MILLION_READY'); }
+      else if (command === 'old-districts-hold-next') {oldDirectoryHoldNext='get_districts';console.log('FIXTURE_OLD_DISTRICTS_HOLD_READY');}
+      else if (command === 'old-districts-fail-next') {oldDirectoryFailNext='get_districts';console.log('FIXTURE_OLD_DISTRICTS_FAIL_READY');}
+      else if (command === 'old-wards-hold-next') {oldDirectoryHoldNext='get_wards';console.log('FIXTURE_OLD_WARDS_HOLD_READY');}
+      else if (command === 'old-directories-release') {for(const resolve of oldDirectoryHeld.splice(0))resolve();console.log('FIXTURE_OLD_DIRECTORIES_RELEASED');}
       else if (command === 'state') console.log('FIXTURE_STATE ' + JSON.stringify({ ...summary(), addressMode, addressCounters }));
     }
   });
