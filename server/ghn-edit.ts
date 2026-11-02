@@ -18,7 +18,7 @@ const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('h
 const publicAttempt=(a:Attempt)=>({attemptId:a.id,info:{status:a.info_status},cod:{status:a.cod_status},snapshotSynced:a.snapshot_synced,...a.result_data});
 const nullable=(v:unknown)=>v==null?null:String(v);
 const terminal=['delivered','self_delivered','cancel','cancelled','returned','lost','damage'];
-const relevant=(r:Record<string,unknown>)=>Object.fromEntries(['order_code','shop_id','status','to_name','to_phone','to_address','to_district_id','to_ward_code','weight','length','width','height','note','required_note','cod_amount','cod_failed_amount'].map(k=>[k,r[k]??null]));
+const relevant=(r:Record<string,unknown>)=>Object.fromEntries(['order_code','shop_id','status','is_new_to_address','to_province_name','to_ward_name','to_name','to_phone','to_address','to_district_id','to_ward_code','weight','length','width','height','note','required_note','cod_amount','cod_failed_amount'].map(k=>[k,r[k]??null]));
 const matches=(expected:Record<string,unknown>,actual:Record<string,unknown>)=>Object.entries(expected).every(([k,v])=>typeof v==='number'?Number(actual[k])===v:String(actual[k]??'')===String(v));
 /** All writes use fixed carrier URLs and durable operation states. UNKNOWN is never resent. */
 export class GhnEditing {
@@ -71,6 +71,7 @@ export class GhnEditing {
   if(existing){if(existing.payload_hash!==payloadHash||existing.order_code!==orderCode)throw fail('Mã lượt cập nhật đã dùng cho nội dung khác.',409);return publicAttempt(await this.get(actor,existing.id));}
   const row=await this.row(this.pool,actor,orderCode),config=await this.config(),raw=await this.detailFor(row,config);
   if(this.fingerprint(row,raw,config)!==body.expectedFingerprint)throw fail('Dữ liệu đã thay đổi. Tải lại vận đơn trước khi lưu.',409);
+  if(raw.is_new_to_address===true&&body.info)throw fail('Chưa hỗ trợ sửa thông tin địa chỉ hai cấp tại đây. Hãy sửa trực tiếp trên GHN; COD vẫn có thể cập nhật riêng.',409);
   if(terminal.includes(String(raw.status)))throw fail('Vận đơn đã kết thúc; không thể chỉnh sửa.',409);
   const client=await this.pool.connect();let attempt:Attempt;
   try{const current=await this.locked(client,actor,orderCode,config);if(current.row_revision!==row.row_revision)throw fail('Vận đơn đã thay đổi.',409);

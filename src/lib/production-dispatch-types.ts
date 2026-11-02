@@ -54,7 +54,7 @@ export interface ProductionDispatchData {
 export interface ProductionSourceLine {
   source_line_key:string;source_line_index:number;product_id:string|null;product_sku:string;product_name:string;ordered_quantity:number;color:unknown;size:unknown;dimensions:unknown;
   /** Canonical product-fulfillment projection. It never exposes product profiles or classification snapshots. */
-  submitted_quantity?:DispatchQuantity;remaining_quantity?:DispatchQuantity;
+  submitted_quantity?:DispatchQuantity;remaining_quantity?:DispatchQuantity;direct_remaining_quantity?:DispatchQuantity;
   fulfillment_route?:'SEW'|'PURCHASE'|'UNCLASSIFIED';fulfillment_status?:'CONFIRMED'|'UNCLASSIFIED'|'REVIEW';fulfillment_reason?:string;fulfillment_requires_split?:boolean;fulfillment_revision?:number;
 }
 export interface ProductionSourceOrder {id:string;order_number:string|null;display_order_number:string|null;status:string;delivery_date:string|null;updated_at:string;items:ProductionSourceLine[];source_validation_error?:string|null}

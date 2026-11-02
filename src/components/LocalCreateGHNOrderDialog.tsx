@@ -1,3 +1,4 @@
+import {GhnNewReceiverAddressDialog,type GhnNewReceiver} from './GhnNewReceiverAddressDialog';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { localApi, type GhnOrderAttempt } from '@/lib/local-api';
@@ -50,6 +51,8 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const [shops,setShops]=useState<Shop[]>([]),[shopId,setShopId]=useState('');
   const dialogContent=useRef<HTMLDivElement>(null);
   const [provinces,setProvinces]=useState<Province[]>([]),[districts,setDistricts]=useState<District[]>([]),[wards,setWards]=useState<Ward[]>([]);
+  const [addressMode,setAddressMode]=useState<'OLD3'|'NEW2'>('OLD3');
+  const [newAddress,setNewAddress]=useState<GhnNewReceiver>({address:'',provinceId:'',wardId:'',provinceName:'',wardName:''});
   const [provinceId,setProvinceId]=useState(''),[districtId,setDistrictId]=useState(''),[wardCode,setWardCode]=useState('');
   const [toName,setToName]=useState(''),[toPhone,setToPhone]=useState(''),[toAddress,setToAddress]=useState('');
   const [items,setItems]=useState<Item[]>([blankItem()]);
@@ -96,7 +99,15 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   },[]);
   const readForSession=useCallback(async<T,>(action:string,body:Record<string,unknown>={})=>{
     const pinned=assertSessionAuth();
-    try{return await read<T>(action,body,pinned);}
+    try{
+      if(action==='preview_new_address') {
+        const snapshot=body.snapshot as import('@/lib/ghn-quote-comparison').GhnQuoteSnapshot,service=body.service as Service;
+        const metadata=snapshot.newAddress!,measured=snapshot.feeData,products=metadata.productLines as Array<{name:string;quantity:number;code?:string}>;
+        const content=buildGhnPackedContent(products);
+        return await localApi.previewGhnOrder({...metadata,idempotencyKey:crypto.randomUUID(),shopId:body.shopId,orderData:{...(metadata.orderData as object),weight:measured.weight,...(measured.length!==undefined?{length:measured.length,width:measured.width,height:measured.height}:{}),cod_amount:measured.cod_value,insurance_value:measured.insurance_value,cod_failed_amount:measured.cod_failed_amount??0,content,service_type_id:service.service_type_id,items:measured.items!.map((parcel,index)=>({...parcel,name:buildGhnCreateParcelItemName(products,index,measured.items!.length),price:0}))}},pinned) as T;
+      }
+      return await read<T>(action,body,pinned);
+    }
     catch(cause){
       const feeData=body.feeData as Record<string,unknown>|undefined;
       if(action==='calculate_fee'&&Number(feeData?.service_type_id)===5&&!feeData?.items&&['length','width','height'].every(field=>feeData?.[field]===undefined)) throw new Error(`Cần kích thước kiện để GHN báo cước hoàn chỉnh. ${errorText(cause)}`);
@@ -116,7 +127,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const effectiveParcels=useMemo(()=>effectiveGhnParcels(parcels,productWeight.total,weightFollowsProducts),[parcels,productWeight.total,weightFollowsProducts]);
   // Unit product weight × quantity feeds one parcel by default. Actual packed
   // measurements become authoritative as soon as the operator edits gross weight.
-  const quoteInput=useMemo(()=>productWeightInputError?{snapshot:null,error:productWeightInputError}:weightFollowsProducts&&productWeight.error?{snapshot:null,error:productWeight.error}:buildGhnQuoteSnapshot({provinceId,districtId,wardCode,address:toAddress,cod:numericComposing?NaN:cod,insurance,codFailed:collectFailed?failedCod:0,parcels:effectiveParcels}),[provinceId,districtId,wardCode,toAddress,cod,insurance,collectFailed,failedCod,effectiveParcels,numericComposing,productWeightInputError,weightFollowsProducts,productWeight.error]);
+  const quoteInput=useMemo(()=>productWeightInputError?{snapshot:null,error:productWeightInputError}:weightFollowsProducts&&productWeight.error?{snapshot:null,error:productWeight.error}:buildGhnQuoteSnapshot({...(addressMode==='NEW2'?{addressMode:'NEW2' as const,newAddress:{addressMode:'NEW2',newWardId:Number(newAddress.wardId),provinceId:Number(newAddress.provinceId),orderId:order?.id||null,orderNumber:order?(order.display_order_number||order.order_number||''):customOrderNumber,productLines:buildGhnProductLines(items),orderData:{to_name:toName,to_phone:toPhone,to_address:toAddress,note,required_note:requiredNote,payment_type_id:Number(payment)}}}:{}),provinceId:addressMode==='NEW2'?newAddress.provinceId:provinceId,districtId,wardCode:addressMode==='NEW2'?newAddress.wardId:wardCode,address:toAddress,cod:numericComposing?NaN:cod,insurance,codFailed:collectFailed?failedCod:0,parcels:effectiveParcels}),[provinceId,districtId,wardCode,toAddress,cod,insurance,collectFailed,failedCod,effectiveParcels,numericComposing,productWeightInputError,weightFollowsProducts,productWeight.error,addressMode,newAddress,order,customOrderNumber,items,toName,toPhone,note,requiredNote,payment]);
   // This identity excludes the chosen shop/service so comparison rows stay usable
   // while the operator chooses. Every price-affecting input is included.
   const quoteContext=JSON.stringify([open,order?.id,reload,locked,matchingAddress,dataBusy,quoteRevision,selectionMode,quoteInput.snapshot?.key||null]);
@@ -130,14 +141,14 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const phoneError=!/^(?:0\d{9}|\+84\d{9})$/.test(toPhone.trim())?'Nhập số điện thoại 10 số bắt đầu bằng 0, hoặc +84 và 9 số.':'';
   const streetError=toAddress.trim().length<3||toAddress.trim().length>500?'Nhập địa chỉ đầy đủ (3–500 ký tự).':metadataAddress(toAddress)?'Nội dung này giống thông tin hồ sơ, không phải địa chỉ nhận hàng. Vui lòng nhập lại.':'';
   const totalWeight=effectiveParcels.reduce((sum,parcel)=>sum+parcel.weight,0);
-  const parcelWeightValid=effectiveParcels.every(parcelWeightIsValid)&&totalWeight<=50000;
+  const parcelWeightValid=effectiveParcels.length>=1&&effectiveParcels.length<=100&&effectiveParcels.every(parcelWeightIsValid)&&Number.isSafeInteger(totalWeight)&&totalWeight>=effectiveParcels.length&&totalWeight<=effectiveParcels.length*50000;
   const parcelDimensionsComplete=effectiveParcels.every(parcelDimensionsAreComplete);
   const dimensionalWeight=parcelDimensionsComplete?effectiveParcels.reduce((sum,parcel)=>sum+ghnDimensionalWeightGrams(parcel)!,0):null;
   const parcelValid=parcelWeightValid&&parcelDimensionsComplete;
   const invalidParcelIndex=effectiveParcels.findIndex(parcel=>!parcelWeightIsValid(parcel)||!parcelDimensionsAreComplete(parcel));
-  const parcelCreateError=totalWeight>50000?'Tổng cân nặng vận đơn không được vượt quá 50.000 gram (50 kg).':invalidParcelIndex>=0?`Kiện ${invalidParcelIndex+1}: nhập cân nặng và đủ dài × rộng × cao (1–200 cm) trước khi tạo vận đơn.`:'';
+  const parcelCreateError=invalidParcelIndex>=0?!parcelWeightIsValid(effectiveParcels[invalidParcelIndex])?`Kiện ${invalidParcelIndex+1}: nhập cân nặng 1–50.000 gram. Đơn trên 50 kg: Thêm kiện và khai từng kiện đã đóng gói.`:`Kiện ${invalidParcelIndex+1}: nhập đủ dài × rộng × cao (1–200 cm) trước khi tạo vận đơn.`:!parcelWeightValid?'Kiểm tra số kiện và tổng cân nặng đã khai.':'';
   const createValidationError=nameError||phoneError||streetError||quoteInput.error||parcelCreateError||validateGhnCreateItems(items)||(!['1','2'].includes(payment)?'Chọn người gửi hoặc người nhận trả cước.':'')||(customOrderNumber.length>100?'Mã đơn riêng không được vượt quá 100 ký tự.':'');
-  const formSignature=JSON.stringify([toName,toPhone,toAddress,provinceId,districtId,wardCode,ghnProductDraftSignature(items),parcelDraft(parcels),codInput,insuranceInput,payment,note,requiredNote,selectionMode,collectFailed,failedCodInput,insuranceFollowsCod,weightFollowsProducts,customOrderNumber]);
+  const formSignature=JSON.stringify([...(addressMode==='NEW2'?[addressMode,newAddress]:[]),toName,toPhone,toAddress,provinceId,districtId,wardCode,ghnProductDraftSignature(items),parcelDraft(parcels),codInput,insuranceInput,payment,note,requiredNote,selectionMode,collectFailed,failedCodInput,insuranceFollowsCod,weightFollowsProducts,customOrderNumber]);
   const changeParcel=(id:string,patch:Partial<Parcel>)=>setParcels(previous=>previous.map(parcel=>parcel.id===id?{...parcel,...patch}:parcel));
   const changeOrderWeight=(value:string)=>{setWeightFollowsProducts(false);changeParcel(parcels[0].id,{weightInput:value,weight:parseGhnIntegerInput(value,1,50000)??0});};
   const useProductWeight=()=>{dialogContent.current?.querySelector<HTMLInputElement>('#ghn-parcel-weight')?.focus();setWeightFollowsProducts(true);};
@@ -168,7 +179,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   },[assertSessionAuth]);
   const resetForm=useCallback(()=>{
     const {order,remainingAmount}=initialDefaults.current;
-    setShopId('');setProvinceId('');setDistrictId('');setWardCode('');setDistricts([]);setWards([]);setServices([]);setServiceChoice('');setFeeQuote(null);
+    setAddressMode('OLD3');setNewAddress({address:'',provinceId:'',wardId:'',provinceName:'',wardName:''});setShopId('');setProvinceId('');setDistrictId('');setWardCode('');setDistricts([]);setWards([]);setServices([]);setServiceChoice('');setFeeQuote(null);
     const phone=order?.customers?.phone||'',address=order?.customers?.address||'';
     const badPhone=Boolean(phone&&!/^(?:0\d{9}|\+84\d{9})$/.test(phone.trim())),badAddress=metadataAddress(address);
     setToName(order?.customers?.name||'');setToPhone(badPhone?'':phone);setToAddress(badAddress?'':address);
@@ -330,17 +341,19 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   useEffect(()=>{
     if(!open||!recoveryReady)return;
     let active=true;setDataBusy(true);setDataError('');
-    void Promise.all([readForSession<Shop[]>('get_shops'),readForSession<Province[]>('get_provinces')]).then(([loadedShops,loadedProvinces])=>{
+    void Promise.allSettled([readForSession<Shop[]>('get_shops'),readForSession<Province[]>('get_provinces')]).then(([shopResult,provinceResult])=>{
+      if(shopResult.status==='rejected')throw shopResult.reason;
+      const loadedShops=shopResult.value,loadedProvinces=provinceResult.status==='fulfilled'?provinceResult.value:[];
       if(!active)return;
       setShops(loadedShops);setProvinces(loadedProvinces);
       setShopId(previous=>loadedShops.some(row=>String(row._id)===previous)?previous:String(loadedShops[0]?._id||''));
-      if(!loadedShops.length || !loadedProvinces.length)setDataError('Không có cửa hàng hoặc địa chỉ GHN khả dụng. Kiểm tra Cài đặt API rồi tải lại.');
+      if(!loadedShops.length)setDataError('Không có cửa hàng GHN khả dụng. Kiểm tra Cài đặt API rồi tải lại.');
     }).catch(cause=>{if(active){setShops([]);setProvinces([]);setDataError(errorText(cause));}}).finally(()=>{if(active)setDataBusy(false);});
     return()=>{active=false;};
   },[open,reload,recoveryReady,readForSession]);
 
   useEffect(()=>{
-    if(!open||locked||!autoAddress||!toAddress.trim())return;
+    if(addressMode==='NEW2'||!open||locked||!autoAddress||!toAddress.trim())return;
     if(dataBusy||!provinces.length){setMatchingAddress(false);setAddressHints(null);setAddressMessage(dataBusy?'Đang tải danh mục GHN để gợi ý địa chỉ…':'Chưa có danh mục GHN. Tải lại cửa hàng / địa chỉ để thử lại.');return;}
     const token=addressGeneration.current.next();let active=true;
     const current=()=>active&&addressGeneration.current.current(token);
@@ -401,10 +414,11 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
         .finally(()=>{if(current()){setMatchingAddress(false);setLocationBusy(false);setAutoAddress(false);}});
     },650);
     return()=>{active=false;clearTimeout(timer);};
-  },[open,locked,dataBusy,autoAddress,provinces,toAddress,matchRetry,reload,loadDistricts,loadWards]);
+  },[open,locked,dataBusy,autoAddress,provinces,toAddress,matchRetry,reload,loadDistricts,loadWards,addressMode]);
   useEffect(()=>{
     setServiceError('');setServicesBusy(false);
     if(selectionMode==='auto')return;
+    if(addressMode==='NEW2'){const type=totalWeight>=20000||parcels.length>1?5:2;serviceRoute.current=routeKey;setServices([{service_id:type,service_type_id:type,short_name:'GHN'}]);setServiceChoice(`${type}:${type}`);return;}
     if(!open||locked||!districtId||!shopId||matchingAddress||dataBusy)return;
     const session=quoteSession.current!,token=session.capture();
     let active=true;setServicesBusy(true);
@@ -529,7 +543,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
     try{
       const measured=snapshot.feeData;
       const content=buildGhnPackedContent(items);
-      const result=await localApi.createGhnOrder({idempotencyKey:requestKey,shopId,orderId:order?.id||null,orderNumber:order?(order.display_order_number||order.order_number||''):customOrderNumber,provinceId:Number(provinceId),orderData:{to_name:toName,to_phone:toPhone,to_address:toAddress,to_district_id:Number(districtId),to_ward_code:wardCode,weight:measured.weight,...(measured.length!==undefined?{length:measured.length,width:measured.width,height:measured.height}:{}),cod_amount:cod,insurance_value:insurance,cod_failed_amount:measured.cod_failed_amount??0,note,required_note:requiredNote,content,payment_type_id:Number(payment),service_type_id:selectedService.service_type_id,service_id:selectedService.service_id,items:measured.items!.map((parcel,index)=>({...parcel,name:buildGhnCreateParcelItemName(items,index,measured.items!.length),price:0}))},productLines:buildGhnProductLines(items)},assertSessionAuth());
+      const result=await localApi.createGhnOrder({idempotencyKey:requestKey,shopId,orderId:order?.id||null,orderNumber:order?(order.display_order_number||order.order_number||''):customOrderNumber,...(addressMode==='NEW2'?{addressMode:'NEW2',newWardId:Number(newAddress.wardId),provinceId:Number(newAddress.provinceId)}:{provinceId:Number(provinceId)}),orderData:{to_name:toName,to_phone:toPhone,to_address:toAddress,...(addressMode==='NEW2'?{}:{to_district_id:Number(districtId),to_ward_code:wardCode}),weight:measured.weight,...(measured.length!==undefined?{length:measured.length,width:measured.width,height:measured.height}:{}),cod_amount:cod,insurance_value:insurance,cod_failed_amount:measured.cod_failed_amount??0,note,required_note:requiredNote,content,payment_type_id:Number(payment),service_type_id:selectedService.service_type_id,...(addressMode==='NEW2'?{}:{service_id:selectedService.service_id}),items:measured.items!.map((parcel,index)=>({...parcel,name:buildGhnCreateParcelItemName(items,index,measured.items!.length),price:0}))},productLines:buildGhnProductLines(items)},assertSessionAuth());
       applyAttempt(result.data,token);
     }catch(cause){
       if(!currentAttemptSession(token))return;
@@ -612,16 +626,16 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
   const statusMessage=attempt?.attempt_status==='REJECTED'?(attempt.message||'GHN đã từ chối yêu cầu. Kiểm tra thông tin rồi chọn “Tạo đơn mới”.'):attempt?.attempt_status==='REMOTE_CREATED'?'GHN đã có mã vận đơn. CRM đang chờ lưu hoàn tất; tải lại trạng thái để tiếp tục lưu, không tạo lại.':'Chưa xác định GHN đã tạo vận đơn hay chưa. Đối soát theo mã tham chiếu trước khi tạo tiếp. Không tạo lại trên GHN khi chưa kiểm tra.';
   const feePrerequisite=matchingAddress?'Đang nhận diện địa chỉ GHN…':dataBusy?'Đang tải cửa hàng và địa chỉ GHN…':quoteInput.error||(selectionMode==='auto'?(!autoSelectionReady?(compareBusy?'Đang so sánh mọi cửa hàng và dịch vụ…':currentComparison?.failures.length?'Chưa xác định được cửa hàng rẻ nhất vì còn lỗi. Tính lại hoặc chủ động chuyển sang chọn thủ công.':currentComparison&&!currentComparison.quotes.length?'Không có dịch vụ khả dụng cho địa chỉ này.':'Đang chuẩn bị so sánh cước…'):''):!shopId?'Chọn cửa hàng gửi để tính cước.':servicesBusy?'Đang tải dịch vụ GHN…':!selectedService?serviceError||'Chọn dịch vụ GHN để tính cước.':'');
   const selectedShop=shops.find(row=>String(row._id)===shopId);
-  const addressSummary=[wards.find(row=>row.WardCode===wardCode)?.WardName,districts.find(row=>String(row.DistrictID)===districtId)?.DistrictName,provinces.find(row=>String(row.ProvinceID)===provinceId)?.ProvinceName].filter(Boolean).join(' · ');
+  const addressSummary=addressMode==='NEW2'?[newAddress.wardName,newAddress.provinceName].filter(Boolean).join(' · '):[wards.find(row=>row.WardCode===wardCode)?.WardName,districts.find(row=>String(row.DistrictID)===districtId)?.DistrictName,provinces.find(row=>String(row.ProvinceID)===provinceId)?.ProvinceName].filter(Boolean).join(' · ');
   const commitAddress=(value:GhnReceiverAddress)=>{
     try{assertSessionAuth();}catch{return;}
     cancelAddressMatch();setToAddress(value.address);setProvinceId(value.provinceId);setDistrictId(value.districtId);setWardCode(value.wardCode);setDistricts(value.districts);setWards(value.wards);
     setAddressMessage('Đã áp dụng địa chỉ GHN.');setAddressEditorOpen(false);
   };
   const focusIncomplete=()=>{
-    if(!streetError&&(!provinceId||!districtId||!wardCode)||streetError){setAddressEditorOpen(true);return;}
+    if(!streetError&&(addressMode==='NEW2'?!newAddress.wardId:!provinceId||!districtId||!wardCode)||streetError){setAddressEditorOpen(true);return;}
     const index=Math.max(0,invalidParcelIndex),parcel=effectiveParcels[index];
-    const badField=!parcelWeightIsValid(parcel)||totalWeight>50000?'weight':(['length','width','height'] as const).find(field=>!Number.isSafeInteger(parcel[field])||parcel[field]<1||parcel[field]>200)||'weight';
+    const badField=!parcelWeightIsValid(parcel)?'weight':(['length','width','height'] as const).find(field=>!Number.isSafeInteger(parcel[field])||parcel[field]<1||parcel[field]>200)||'weight';
     const productIndex=items.findIndex(row=>row.weightInput!==''&&parseGhnIntegerInput(row.weightInput,1,50000)===null);
     const id=nameError?'ghn-to-name':phoneError?'ghn-to-phone':productWeightInputError||weightFollowsProducts&&productWeight.error?'ghn-item-weight-'+Math.max(0,productIndex>=0?productIndex:productWeight.invalidIndex):!parcelValid?parcelInputId(index,badField):validateGhnCreateItems(items)?'ghn-products':!Number.isSafeInteger(cod)||cod<0||cod>50000000?'ghn-cod':!Number.isSafeInteger(insurance)||insurance<0||insurance>5000000?'ghn-insurance':customOrderNumber.length>100?'ghn-custom-order-number':'ghn-failed-cod';
     if(parcels.length>1&&!parcelValid)setMultiEditorOpen(true);
@@ -672,7 +686,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
             {selectionMode==='auto'&&<p className="text-xs text-muted-foreground">Tự so sánh {shops.length} cửa hàng; điểm lấy hàng có thể đổi khi thông tin kiện thay đổi.</p>}
             <div className="grid gap-5 border-t pt-5 sm:grid-cols-2">
               <div className="space-y-4"><h3 id="ghn-recipient-heading" className="font-semibold">Bên nhận</h3><div className="space-y-2"><Label htmlFor="ghn-to-phone">Số điện thoại *</Label><Input id="ghn-to-phone" inputMode="tel" placeholder="Nhập số điện thoại" value={toPhone} onChange={event=>setToPhone(event.target.value)} aria-invalid={Boolean(phoneError)} aria-describedby={phoneError?'ghn-phone-error':undefined}/>{phoneError&&<p id="ghn-phone-error" className="text-xs text-destructive">{phoneError}</p>}</div><div className="space-y-2"><Label htmlFor="ghn-to-name">Họ tên *</Label><Input id="ghn-to-name" placeholder="Nhập họ tên" value={toName} onChange={event=>setToName(event.target.value)} maxLength={100} aria-invalid={Boolean(nameError)} aria-describedby={nameError?'ghn-name-error':undefined}/>{nameError&&<p id="ghn-name-error" className="text-xs text-destructive">{nameError}</p>}</div></div>
-              <div className="space-y-2 sm:pt-9"><Label htmlFor="ghn-address-summary">Địa chỉ người nhận *</Label><button id="ghn-address-summary" type="button" disabled={matchingAddress||dataBusy||!provinces.length} className="flex min-h-20 w-full items-center gap-3 rounded-lg border bg-background px-3 py-3 text-left text-sm disabled:cursor-wait disabled:opacity-60 hover:border-orange-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500" aria-haspopup="dialog" aria-invalid={Boolean(streetError)||!provinceId||!districtId||!wardCode} onClick={()=>setAddressEditorOpen(true)}><MapPin className="h-4 w-4 shrink-0 text-orange-600"/><span className="min-w-0 flex-1 break-words">{toAddress||'Nhập hoặc dán địa chỉ nhận hàng'}{addressSummary&&<span className="mt-1 block text-xs text-muted-foreground">{addressSummary}</span>}</span><ChevronRight className="h-4 w-4 shrink-0"/></button><p className="text-xs text-muted-foreground">Bấm để nhập địa chỉ và chọn tỉnh, quận, phường trong một cửa sổ.</p>{matchingAddress&&<p role="status" className="text-xs text-muted-foreground"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>Đang nhận diện địa chỉ GHN…</p>}{!matchingAddress&&toAddress&&(!provinceId||!districtId||!wardCode)&&<p className="text-xs text-destructive">Chưa đủ địa chỉ GHN. Bấm địa chỉ để kiểm tra.</p>}</div>
+              <div className="space-y-2 sm:pt-9"><div className="flex items-center justify-between gap-2"><Label htmlFor="ghn-address-summary">Địa chỉ người nhận *</Label><select aria-label="Hệ địa chỉ" className="rounded border bg-background px-2 py-1 text-xs" value={addressMode} onChange={event=>{cancelAddressMatch();setAddressMode(event.target.value as 'OLD3'|'NEW2');setProvinceId('');setDistrictId('');setWardCode('');setDistricts([]);setWards([]);setNewAddress({address:toAddress,provinceId:'',wardId:'',provinceName:'',wardName:''});quoteSession.current!.invalidate(true);serviceRoute.current='';setServices([]);setServiceChoice('');setQuoteRevision(value=>value+1);setAddressEditorOpen(true);}}><option value="OLD3">Địa chỉ cũ · 3 cấp</option><option value="NEW2">Địa chỉ mới · 2 cấp</option></select></div><button id="ghn-address-summary" type="button" disabled={matchingAddress||(addressMode==='OLD3'&&(dataBusy||!provinces.length))} className="flex min-h-20 w-full items-center gap-3 rounded-lg border bg-background px-3 py-3 text-left text-sm disabled:cursor-wait disabled:opacity-60 hover:border-orange-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500" aria-haspopup="dialog" aria-invalid={Boolean(streetError)||(addressMode==='NEW2'?!newAddress.wardId:!provinceId||!districtId||!wardCode)} onClick={()=>setAddressEditorOpen(true)}><MapPin className="h-4 w-4 shrink-0 text-orange-600"/><span className="min-w-0 flex-1 break-words">{toAddress||'Nhập hoặc dán địa chỉ nhận hàng'}{addressSummary&&<span className="mt-1 block text-xs text-muted-foreground">{addressSummary}</span>}</span><ChevronRight className="h-4 w-4 shrink-0"/></button><p className="text-xs text-muted-foreground">Bấm để nhập và kiểm tra địa chỉ GHN.</p>{matchingAddress&&<p role="status" className="text-xs text-muted-foreground"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>Đang nhận diện địa chỉ GHN…</p>}{!matchingAddress&&toAddress&&(addressMode==='NEW2'?!newAddress.wardId:!provinceId||!districtId||!wardCode)&&<p className="text-xs text-destructive">Chưa đủ địa chỉ GHN. Bấm địa chỉ để kiểm tra.</p>}</div>
             </div>
           </section>
           <section id="ghn-products" tabIndex={-1} className={cardClass} aria-labelledby="ghn-products-heading">
@@ -699,7 +713,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
             </div>
             <div id="ghn-parcel-help" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{parcels.length>1?`${parcels.length} kiện · COD và giá trị hàng khai một lần cho cả đơn.`:weightFollowsProducts?'Tự cộng KL mỗi sản phẩm × số lượng. Có thể sửa theo kiện đã cân.':'Đang dùng khối lượng kiện đã cân.'}</span>{parcels.length===1&&!weightFollowsProducts&&<Button type="button" size="sm" variant="link" className="h-auto p-0 text-xs text-orange-700" onClick={useProductWeight}>Dùng tổng KL sản phẩm</Button>}</div>
             <details className="text-xs text-muted-foreground"><summary className="w-fit cursor-pointer rounded-sm py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">Cách quy đổi</summary><p className="pt-2">Dài × Rộng × Cao (cm) / 5 = gram quy đổi. Cước dự kiến lấy từ GHN theo cân nặng và kích thước đã nhập.</p></details>
-            <p id="ghn-parcel-error" className={parcelValid?'sr-only':'text-xs text-destructive'}>{parcelCreateError||'Tổng cân nặng tối đa 50.000 gram, mỗi chiều của từng kiện 1–200 cm.'}</p>
+            <p id="ghn-parcel-error" className={parcelValid?'sr-only':'text-xs text-destructive'}>{parcelCreateError||'Mỗi kiện 1–50.000 gram, mỗi chiều 1–200 cm. Tổng nhiều kiện được cộng theo cân thực tế.'}</p>
             {parcels.length===1?<Button type="button" size="sm" variant="link" className="h-auto justify-start p-0 text-xs text-orange-700" disabled={locked} onClick={()=>addParcel()}>Đơn có nhiều kiện? Thêm kiện</Button>:<div className="space-y-3 rounded-lg border bg-muted/10 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><Button type="button" size="sm" variant="ghost" aria-expanded={multiEditorOpen} aria-controls="ghn-multi-parcels" onClick={()=>setMultiEditorOpen(value=>!value)}>{multiEditorOpen?'Thu gọn':'Mở'} {parcels.length} kiện</Button><Button type="button" size="sm" variant="outline" disabled={locked||parcels.length>=100} onClick={()=>addParcel()}><Plus className="mr-1 h-4 w-4"/>Thêm kiện</Button></div>
             {multiEditorOpen&&<div id="ghn-multi-parcels" className="space-y-3" aria-label="Danh sách kiện hàng">{effectiveParcels.map((parcel,index)=>{
               const volume=ghnDimensionalWeightGrams(parcel);
@@ -770,6 +784,7 @@ export function LocalCreateGHNOrderDialog({open,onOpenChange,order,remainingAmou
       </aside>
     </div>
   </DialogContent></Dialog>
-  {addressEditorOpen&&open&&!locked&&<GhnReceiverAddressDialog initial={{address:toAddress,provinceId,districtId,wardCode,districts,wards}} provinces={provinces} read={readForSession} onCancel={()=>setAddressEditorOpen(false)} onCommit={commitAddress}/>}
+  {addressEditorOpen&&open&&!locked&&addressMode==='NEW2'&&<GhnNewReceiverAddressDialog initial={{...newAddress,address:toAddress}} read={readForSession} onCancel={()=>setAddressEditorOpen(false)} onCommit={value=>{cancelAddressMatch();setNewAddress(value);setToAddress(value.address);setAddressEditorOpen(false);setQuoteRevision(revision=>revision+1);}}/>}
+  {addressEditorOpen&&open&&!locked&&addressMode==='OLD3'&&<GhnReceiverAddressDialog initial={{address:toAddress,provinceId,districtId,wardCode,districts,wards}} provinces={provinces} read={readForSession} onCancel={()=>setAddressEditorOpen(false)} onCommit={commitAddress}/>}
   <AlertDialog open={discardOpen} onOpenChange={value=>{if(!value)cancelDiscard();}}><AlertDialogContent className="w-[calc(100%-2rem)] max-w-md"><AlertDialogHeader><AlertDialogTitle>Bỏ bản nháp vận đơn?</AlertDialogTitle><AlertDialogDescription>Thông tin bạn vừa nhập chưa được tạo thành vận đơn. Chọn tiếp tục nhập để giữ lại, hoặc bỏ bản nháp để rời khỏi biểu mẫu.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="gap-2"><AlertDialogCancel className="min-h-11" onClick={cancelDiscard}>Tiếp tục nhập</AlertDialogCancel><AlertDialogAction className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={event=>{event.preventDefault();confirmDiscard();}}>Bỏ bản nháp</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></>;
 }

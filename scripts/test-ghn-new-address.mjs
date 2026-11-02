@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {GhnOrders,ghnPackedParcelItemName} from '../server/ghn-orders.ts';
+import {ExternalReadAdapters} from '../server/external-read-adapters.ts';
+import {readGhnNewDirectory} from '../server/ghn-new-address.ts';
+import {buildGhnQuoteSnapshot,compareGhnShopQuotes,createGhnQuoteSession} from '../src/lib/ghn-quote-comparison.ts';
+const config={configured:true,mode:'ENABLED',revision:1,token:'synthetic-new-address-only',primaryShop:'123',shops:['123']};const calls=[];
+const json=data=>new Response(JSON.stringify({code:200,data}));
+let wrongParent=false;
+const provider=async(url,init={})=>{const path=new URL(url).pathname;calls.push({path,body:init.body?JSON.parse(init.body):null});
+ if(path.endsWith('/v2/shop/all'))return json({shops:[{_id:123,status:1,district_id:1452,ward_code:'010101'}],last_offset:0});
+ if(path.endsWith('/province/all'))return json([{_id:79,name:'Thành phố Hồ Chí Minh',extension_names:['TP Hồ Chí Minh']}]);
+ if(path.endsWith('/ward/all-by-province-id'))return json([{_id:100,name:'Phường An Phú Đông',parent_id:wrongParent?1:79,extension_names:[]}]);
+ if(path.endsWith('/preview')){const body=JSON.parse(init.body);assert.equal(body.is_new_to_address,true);assert.equal(body.to_district_id,undefined);assert.equal(body.to_ward_code,undefined);assert.equal(body.service_id,undefined);assert.equal(body.to_province_name,'Thành phố Hồ Chí Minh');assert.equal(body.to_ward_name,'Phường An Phú Đông');return json({order_code:'',total_fee:19000,fee:{}});}
+ throw Error('Unexpected provider endpoint '+path);
+};
+const adapter=new ExternalReadAdapters({},provider,async()=>config),pool={query:async(sql)=>{if(sql.includes('local_user_profiles'))return{rows:[{role:'admin'}]};throw Error('Preview must not query business/attempt data: '+sql);}};
+const service=new GhnOrders(pool,adapter,provider),content='Synthetic product × 1';
+const input={idempotencyKey:'12345678-1234-4123-8123-123456789012',shopId:'123',provinceId:79,addressMode:'NEW2',newWardId:100,orderData:{to_name:'Synthetic recipient',to_phone:'0900000000',to_address:'Synthetic street',weight:1000,length:20,width:20,height:10,cod_amount:0,insurance_value:0,content,payment_type_id:2,service_type_id:2,required_note:'KHONGCHOXEMHANG',items:[{name:ghnPackedParcelItemName(content),quantity:1,price:0,weight:1000,length:20,width:20,height:10}]}};
+assert.equal((await service.preview('real-admin',input)).total,19000);assert.equal(calls.some(row=>row.path.endsWith('/create')),false);
+wrongParent=true;await assert.rejects(()=>service.preview('real-admin',input),/không hợp lệ/);wrongParent=false;
+await assert.rejects(()=>service.preview('real-admin',{...input,orderData:{...input.orderData,to_district_id:1}}),/Không trộn/);
+const snapshot=buildGhnQuoteSnapshot({addressMode:'NEW2',newAddress:{newWardId:100},provinceId:'79',districtId:'',wardCode:'100',address:'Synthetic street',cod:0,insurance:0,parcel:{weight:1000,length:20,width:20,height:10}}).snapshot;
+assert.ok(snapshot);assert.equal(snapshot.feeData.to_district_id,undefined);
+const session=createGhnQuoteSession(async(action)=>{assert.equal(action,'preview_new_address');return{total:19000};});const matrix=await compareGhnShopQuotes(session,[{_id:123,name:'Synthetic',address:'Fake',district_id:1452}],snapshot);assert.equal(matrix.quotes.length,1);assert.equal(matrix.quotes[0].total,19000);
+console.log('PASS NEW2 authoritative parent/catalog + noncreating preview/quote matrix, mixed IDs reject, no district services or create dispatch, no business writes.');

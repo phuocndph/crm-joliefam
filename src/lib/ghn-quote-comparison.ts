@@ -4,11 +4,12 @@ export const ghnServiceChoiceKey = (service: GhnQuoteService) => `${service.serv
 export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
 export type GhnQuoteItem = { name: string; quantity: number; weight: number; length: number; width: number; height: number };
 export type GhnProductLine = { name: string; quantity: number; weight?: number; code?: string };
-export type GhnFeeData = { to_district_id: number; to_ward_code: string; weight: number; cod_value: number; insurance_value: number; cod_failed_amount?: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
+export type GhnFeeData = { to_district_id?: number; to_ward_code?: string; weight: number; cod_value: number; insurance_value: number; cod_failed_amount?: number; length?: number; width?: number; height?: number; items?: GhnQuoteItem[] };
 export type GhnQuoteSnapshot = {
   key: string;
   kind: 'preliminary' | 'final';
   feeData: GhnFeeData;
+  newAddress?: Record<string,unknown>;
 };
 export type GhnMeasuredParcel = { weight: number; length?: number; width?: number; height?: number };
 export const GHN_QUOTE_TTL_MS = 60000;
@@ -46,7 +47,7 @@ export function ghnRecipientAmount(cod: number, payment: string, quote: GhnFeeQu
   const amount = cod + quote!.total;
   return Number.isSafeInteger(amount) ? amount : null;
 }
-type QuoteInput = { provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; codFailed?: number; parcel?: GhnMeasuredParcel; parcels?: readonly GhnMeasuredParcel[] };
+type QuoteInput = { addressMode?:'NEW2'; newAddress?:Record<string,unknown>; provinceId: string; districtId: string; wardCode: string; address: string; items?: Array<GhnProductLine | GhnQuoteItem>; cod: number; insurance: number; codFailed?: number; parcel?: GhnMeasuredParcel; parcels?: readonly GhnMeasuredParcel[] };
 const integer = (value: number, min: number, max: number) => Number.isSafeInteger(value) && value >= min && value <= max;
 const physical = (row: Partial<GhnQuoteItem>): row is GhnQuoteItem => integer(Number(row.quantity), 1, 1000) && integer(Number(row.weight), 1, 50000) && [row.length, row.width, row.height].every(value => integer(Number(value), 1, 200));
 
@@ -62,7 +63,9 @@ export function parseGhnKilograms(value: string): number | null {
 
 /** Multi-parcel orders use type 5, including when total weight is below 20 kg. */
 export function isGhnServiceEligible(service: Pick<GhnQuoteService, 'service_type_id'>, weight: number, parcelCount = 1): boolean {
-  return integer(weight, 1, 50000) && integer(parcelCount, 1, 100) && (weight < 20000 && parcelCount === 1 ? service.service_type_id === 2 : service.service_type_id === 5);
+  // The existing 50 kg boundary applies to each measured physical parcel,
+  // rather than their aggregate. A weight-only call still means one parcel.
+  return integer(parcelCount, 1, 100) && integer(weight, parcelCount, parcelCount * 50000) && (weight < 20000 && parcelCount === 1 ? service.service_type_id === 2 : service.service_type_id === 5);
 }
 
 export function eligibleGhnServices(services: readonly GhnQuoteService[], weight: number, parcelCount = 1): GhnQuoteService[] {
@@ -109,7 +112,7 @@ export function validateGhnCreateItems(items: readonly GhnProductLine[]): string
 
 export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSnapshot | null; error: string } {
   const fail = (error: string) => ({ snapshot: null, error });
-  if (!integer(Number(input.provinceId), 1, 99999999) || !integer(Number(input.districtId), 1, 99999999) || !/^[A-Za-z0-9_-]{1,30}$/.test(input.wardCode) || !input.address.trim()) return fail('Chọn đủ địa chỉ tỉnh / thành, quận / huyện và phường / xã để tính cước.');
+  if (!integer(Number(input.provinceId), 1, 99999999) || (input.addressMode!=='NEW2'&&!integer(Number(input.districtId), 1, 99999999)) || !/^[A-Za-z0-9_-]{1,30}$/.test(input.wardCode) || !input.address.trim()) return fail('Chọn đủ địa chỉ tỉnh / thành, quận / huyện và phường / xã để tính cước.');
   if (!integer(input.cod, 0, 50000000) || !integer(input.insurance, 0, 5000000)) return fail('COD phải là số nguyên từ 0 đến 50 triệu; bảo hiểm từ 0 đến 5 triệu đồng.');
   if (input.codFailed !== undefined && !integer(input.codFailed, 0, 50000000)) return fail('Tiền thu khi giao thất bại phải là số nguyên từ 0 đến 50 triệu đồng.');
   if (input.parcels) {
@@ -118,12 +121,12 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
     const invalid = input.parcels.findIndex(row => !integer(row.weight, 1, 50000) || ![row.length, row.width, row.height].every(value => integer(Number(value), 1, 200)));
     if (invalid >= 0) return fail(`Kiện ${invalid + 1}: nhập cân nặng 1–50.000 gram và đủ dài × rộng × cao 1–200 cm để tính cước nhiều kiện.`);
     const weight = input.parcels.reduce((sum, row) => sum + row.weight, 0);
-    if (!integer(weight, 1, 50000)) return fail('Tổng cân nặng của vận đơn không được vượt quá 50.000 gram (50 kg).');
+    if (!integer(weight, input.parcels.length, input.parcels.length * 50000)) return fail('Tổng cân nặng không khớp phạm vi các kiện đã khai.');
     // Type 5 is priced from each item. There is no documented combined box:
     // omit root dimensions rather than manufacture a bounding box.
-    const feeData: GhnFeeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight, cod_value: input.cod, insurance_value: input.insurance, items: input.parcels.map((row, index) => ({ name: ghnQuoteParcelName(index, input.parcels!.length), quantity: 1, weight: row.weight, length: row.length!, width: row.width!, height: row.height! })) };
+    const feeData: GhnFeeData = { ...(input.addressMode==='NEW2'?{}:{to_district_id:Number(input.districtId),to_ward_code:input.wardCode}), weight, cod_value: input.cod, insurance_value: input.insurance, items: input.parcels.map((row, index) => ({ name: ghnQuoteParcelName(index, input.parcels!.length), quantity: 1, weight: row.weight, length: row.length!, width: row.width!, height: row.height! })) };
     if (input.codFailed !== undefined) feeData.cod_failed_amount = input.codFailed;
-    return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData]), kind: 'final', feeData }, error: '' };
+    return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData,...(input.addressMode==='NEW2'?[input.newAddress]:[])]), kind: 'final', feeData,...(input.addressMode==='NEW2'?{newAddress:input.newAddress}:{}) }, error: '' };
   }
   let parcel = input.parcel;
   // Compatibility fallback for older pure callers. The local dialog always
@@ -138,15 +141,16 @@ export function buildGhnQuoteSnapshot(input: QuoteInput): { snapshot: GhnQuoteSn
       height: legacy.reduce((sum, row) => sum + row.height * row.quantity, 0),
     };
   }
-  if (!integer(parcel.weight, 1, 50000)) return fail('Nhập khối lượng kiện đã cân từ 1 đến 50.000 gram.');
+  if (!integer(parcel.weight, 1, 50000)) return fail('Nhập khối lượng mỗi kiện từ 1 đến 50.000 gram. Đơn trên 50 kg: chọn Thêm kiện và khai từng kiện đã đóng gói.');
   const dimensions = [parcel.length, parcel.width, parcel.height];
   const hasDimension = dimensions.some(value => value !== undefined && value !== 0);
   if (hasDimension && dimensions.some(value => !integer(Number(value), 1, 200))) return fail('Khi đã nhập kích thước, cần đủ dài × rộng × cao từ 1 đến 200 cm để tính cước chính xác.');
-  const base: GhnFeeData = { to_district_id: Number(input.districtId), to_ward_code: input.wardCode, weight: parcel.weight, cod_value: input.cod, insurance_value: input.insurance };
+  const base: GhnFeeData = { ...(input.addressMode==='NEW2'?{}:{to_district_id:Number(input.districtId),to_ward_code:input.wardCode}), weight: parcel.weight, cod_value: input.cod, insurance_value: input.insurance };
   if (input.codFailed !== undefined) base.cod_failed_amount = input.codFailed;
+  if(input.addressMode==='NEW2'&&!hasDimension)return fail('Nhập đủ kích thước kiện để xem trước cước địa chỉ mới.');
   if (!hasDimension) return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'preliminary', base]), kind: 'preliminary', feeData: base }, error: '' };
   const feeData: GhnFeeData = { ...base, length: parcel.length!, width: parcel.width!, height: parcel.height!, items: [{ name: GHN_PACKED_PARCEL_NAME, quantity: 1, weight: parcel.weight, length: parcel.length!, width: parcel.width!, height: parcel.height! }] };
-  return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData]), kind: 'final', feeData }, error: '' };
+  return { snapshot: { key: JSON.stringify([input.provinceId, input.address, 'final', feeData,...(input.addressMode==='NEW2'?[input.newAddress]:[])]), kind: 'final', feeData,...(input.addressMode==='NEW2'?{newAddress:input.newAddress}:{}) }, error: '' };
 }
 
 export class StaleGhnQuoteError extends Error {
@@ -206,7 +210,7 @@ export function createGhnQuoteSession(read: Read, options: { now?: () => number;
     const key = quoteKey(shopId, service, snapshot), existing = quotes.get(key);
     if (existing?.ready && !isGhnQuoteFresh(existing.value, now())) quotes.delete(key);
     return cached(quotes, key, async () => {
-      const result = await read<unknown>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
+      const result = snapshot.newAddress ? await read<unknown>('preview_new_address',{shopId,snapshot,service}) : await read<unknown>('calculate_fee', { shopId, feeData: { ...snapshot.feeData, service_id: service.service_id, service_type_id: service.service_type_id } });
       return parseGhnFeeQuote(result, now(), ttlMs);
     }, token);
   };
@@ -249,7 +253,7 @@ export async function compareGhnShopQuotes(session: GhnQuoteSession, shops: GhnQ
   // Fan-out is queued by the shared session, including automatic selected fees.
   await Promise.all(shops.map(async shop => {
     try {
-      const services = eligibleGhnServices(await session.services(String(shop._id), snapshot.feeData.to_district_id, token), snapshot.feeData.weight, snapshot.feeData.items?.length || 1);
+      const services = eligibleGhnServices((snapshot.newAddress ? [{service_id:snapshot.feeData.items!.length>1||snapshot.feeData.weight>=20000?5:2,service_type_id:snapshot.feeData.items!.length>1||snapshot.feeData.weight>=20000?5:2,short_name:'GHN'}] : await session.services(String(shop._id), snapshot.feeData.to_district_id!, token)), snapshot.feeData.weight, snapshot.feeData.items?.length || 1);
       if (!services.length) result.noServices.push(shop);
       await Promise.all(services.map(async service => {
         try { const quote = await session.quoteDetail(String(shop._id), service, snapshot, token); result.quotes.push({ shop, service, ...quote, services, snapshotKey: snapshot.key }); }

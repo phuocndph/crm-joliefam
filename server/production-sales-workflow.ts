@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { pool } from "./db/bootstrap.js";
 import { businessDateKey } from './business-date.js';
 import {snapshotProductionImages} from './production-reference-images.js';
+import {assertZcrmOrderExecutable} from './zcrm-commerce.js';
 import {executableEstimateOutput} from './production-uncut-cancellations.js';
 import {isLaborProduct,productSupplyClassificationState,productSupplySelection} from './product-fulfillment-classification.js';
 
@@ -419,7 +420,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
       const params: unknown[] = [];
       let scope = "lower(coalesce(o.status,'')) not in ('cancelled','returned')";
       if (!privileged()) {
-        await capability(pool, ["production_sales_submit", "production_sales_workflow", "production_view"]);
+        await capability(pool, ["production_sales_submit", "production_sales_workflow", "production_view", "production_manage"]);
         params.push(d.actor());
         scope += ` and (o.manager_id=$${params.length} or o.assignee_id=$${params.length})`;
       }
@@ -428,6 +429,8 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
       if(exactOrderId){params.push(exactOrderId);scope+=` and o.id=$${params.length}`;}
       const rows = (await pool.query(`select o.* from local_orders o where ${scope} order by coalesce(o.updated_at,o.created_at) desc nulls last limit ${exactOrderId?'1':'500'}`, params)).rows;
       const submitted=await submittedQuantities(pool,rows.map((row:Row)=>String(row.id)));
+      const committedRows=rows.length?(await pool.query(`select r.order_id,l.source_line_key,coalesce(sum(a.quantity),0) quantity from local_production_sales_request_lines l join local_production_sales_requests r on r.id=l.request_id join local_production_sales_allocations a on a.request_line_id=l.id where r.order_id=any($1::text[]) group by r.order_id,l.source_line_key`,[rows.map((row:Row)=>String(row.id))])).rows:[];
+      const committed=new Map<string,string>(committedRows.map((row:Row)=>[`${row.order_id}:${row.source_line_key}`,String(row.quantity)]));
       const output = [];
       for (const order of rows) {
         try {
@@ -439,7 +442,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         }
       }
       const supply=await fulfillmentForLines(pool,output.flatMap((row:Row)=>row.items as Row[]));
-      res.json(output.map((row:Row)=>({...row,items:(row.items as Row[]).map(line=>sourceLineProjection(line,supply,submitted,String(row.id)))})));
+      res.json(output.map((row:Row)=>({...row,items:(row.items as Row[]).map(line=>({...sourceLineProjection(line,supply,submitted,String(row.id)),direct_remaining_quantity:String(Math.max(0,Number(line.ordered_quantity)-Number(committed.get(`${row.id}:${line.source_line_key}`)||0)))}))})));
     } catch (error) { d.sendError(res, error); }
   });
 
@@ -581,18 +584,17 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
     } catch(error) { d.sendError(res,error); }
   });
 
-  app.post("/api/production-sales/requests/:id/allocate", async (req, res) => {
-    try {
-      const result = await mutate(`SALE_ALLOCATE:${req.params.id}`, req.body || {}, async (client) => {
+  // Shared allocation primitive: caller owns idempotency and one transaction.
+  async function allocateAccepted(client: PoolClient, requestId: string, body: Body) {
         await manage(client);
-        const request = (await client.query("select * from local_production_sales_requests where id=$1 for update", [req.params.id])).rows[0];
+        const request = (await client.query("select * from local_production_sales_requests where id=$1 for update", [requestId])).rows[0];
         if (!request || request.status !== "ACCEPTED") fail("Yêu cầu phải được tiếp nhận trước khi lập lệnh.", 409);
         const sourceOrder = (await client.query("select * from local_orders where id=$1 for update", [request.order_id])).rows[0];
         if (!sourceOrder || ["cancelled", "returned"].includes(String(sourceOrder.status || "").toLowerCase())) fail("Đơn nguồn đã hủy/hoàn; cần xử lý điều chỉnh.", 409);
         const currentSourceLines = await normalizeOrderLines(client, sourceOrder);
-        const inputs = Array.isArray(req.body.lines) ? req.body.lines as Body[] : [];
+        const inputs = Array.isArray(body.lines) ? body.lines as Body[] : [];
         if (!inputs.length) fail("Cần ít nhất một dòng phân bổ.");
-        const priority = String(req.body.priority || request.priority || "NORMAL").toUpperCase();
+        const priority = String(body.priority || request.priority || "NORMAL").toUpperCase();
         const inputByLine=new Map<string,{input:Body;index:number;quantity:string}>();
         for(const [index,input] of inputs.entries()){
           const lineId=String(input.request_line_id||'');
@@ -635,11 +637,11 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           const number = `SX-${businessDateKey().slice(0,7).replace("-","")}-${randomUUID().slice(0,8).toUpperCase()}`;
           const orderUuid = uuidPattern.test(String(request.order_id)) ? request.order_id : null;
           const po = (await client.query(`insert into local_production_orders(production_order_number,production_batch_number,product_id,quantity_planned,source_type,source_id,order_id,planned_start_date,planned_end_date,production_order_group_id,created_by,dispatch_priority,dispatch_reference,dispatch_notes,sales_request_id,workflow_generation)
-            values($1,$1,$2,$3,'FROM_ORDER',$4::uuid,$13::text,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V3') returning *`, [number, line.product_id, qty, orderUuid, req.body.planned_start_date || null, req.body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, req.body.reference || null, req.body.notes || request.notes || null, request.id, String(request.order_id)])).rows[0];
+            values($1,$1,$2,$3,'FROM_ORDER',$4::uuid,$13::text,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V3') returning *`, [number, line.product_id, qty, orderUuid, body.planned_start_date || null, body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, body.reference || null, body.notes || request.notes || null, request.id, String(request.order_id)])).rows[0];
           const snapshot = line.source_line_snapshot || {};
           const images=await snapshotProductionImages(client,line.product_id,input.reference_images);
           const item = (await client.query(`insert into local_production_order_items(production_order_id,product_id,product_sku,product_name,fabric_variant_id,source_order_item_key,color,size,dimensions,planned_quantity,notes,sales_request_line_id,reference_images)
-            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, input.fabric_variant_id || snapshot.fabric_variant_id || null, line.source_line_key, input.color || snapshot.color || null, input.size || snapshot.size || null, input.dimensions || snapshot.dimensions || snapshot.specifications || null, qty, input.notes || req.body.notes || null, line.id,JSON.stringify(images)])).rows[0];
+            values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) returning *`, [po.id, line.product_id, line.product_sku, line.product_name, input.fabric_variant_id || snapshot.fabric_variant_id || null, line.source_line_key, input.color || snapshot.color || null, input.size || snapshot.size || null, input.dimensions || snapshot.dimensions || snapshot.specifications || null, qty, input.notes || body.notes || null, line.id,JSON.stringify(images)])).rows[0];
           const batch = (await client.query("insert into local_production_batches(production_order_id,batch_number,planned_quantity,status,created_by) values($1,$2,$3,'PLANNED',$4) returning *", [po.id, number, qty, d.actor()])).rows[0];
           await client.query("insert into local_production_sales_allocations(request_line_id,production_order_id,order_item_id,production_batch_id,quantity,created_by) values($1,$2,$3,$4,$5,$6)", [line.id, po.id, item.id, batch.id, qty, d.actor()]);
           const cuttingEstimate = await createInitialDraftCuttingPlan(client,po.id,item,batch,input.cutting_plan,d.actor());
@@ -647,6 +649,74 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         }
         await client.query("insert into local_production_sales_events(request_id,action,from_status,to_status,actor_id,data) values($1,'ALLOCATE','ACCEPTED','ACCEPTED',$2,$3::jsonb)", [request.id, d.actor(), JSON.stringify({ group_id: groupId, order_ids: orders.map((row: Row) => row.id) })]);
         return { request_id: request.id, group_id: groupId, order_count: orders.length, orders, reused: false };
+  }
+
+  // Management creates from canonical CRM lines directly: the ACCEPTED record is
+  // an internal source/quota linkage, never a fabricated independent approval.
+  app.post("/api/production/source-orders/:id/create", async (req,res) => {
+    try {
+      const result=await mutate(`DIRECT_ORDER_CREATE:${req.params.id}`,req.body || {},async client=>{
+        await manage(client);
+        const orderId=String(req.params.id),order=(await client.query('select * from local_orders where id=$1 for update',[orderId])).rows[0];
+        if(!order || ['cancelled','returned'].includes(String(order.status || '').toLowerCase()))fail('Đơn không còn đủ điều kiện lập lệnh.',409);
+        if(!privileged() && order.manager_id!==d.actor() && order.assignee_id!==d.actor())fail('Bạn không phụ trách đơn hàng này.',403);
+        await assertZcrmOrderExecutable(client,orderId);
+        const start=isoDate(req.body.planned_start_date,true),due=isoDate(req.body.planned_end_date,true);
+        if(start && due && due<start)fail('Hạn hoàn thành phải từ ngày bắt đầu.');
+        const inputs=Array.isArray(req.body.lines)?req.body.lines as Body[]:[];
+        if(!inputs.length || inputs.length>100)fail('Chọn từ 1 đến 100 dòng cần sản xuất.');
+        const sourceLines=await normalizeOrderLines(client,order),sources=new Map(sourceLines.map(line=>[line.source_line_key,line]));
+        const selected:Array<{source:Row;input:Body;qty:string}>=[],seen=new Set<string>();let reuseHeld=false;
+        for(const input of inputs){
+          const key=String(input.source_line_key || ''),source=sources.get(key) as Row;
+          if(seen.has(key))fail('Một dòng đơn chỉ được chọn một lần.',409);seen.add(key);
+          if(!source || !source.product_id || !(source.ordered_quantity>0))fail('Sản phẩm nguồn không còn hợp lệ. Tải lại đơn.',409);
+          // Canonical line identity and source snapshot own product/specification.
+          const qty=positive(input.quantity);
+          const held=(await client.query(`select coalesce(sum(l.requested_quantity),0) quantity from local_production_sales_request_lines l
+            join local_production_sales_requests r on r.id=l.request_id where r.order_id=$1 and l.source_line_key=$2 and r.status not in ('RETURNED','CANCELLED')`,[orderId,key])).rows[0].quantity;
+          if((await client.query('select $1::numeric>$2::numeric exceeds',[qty,source.ordered_quantity])).rows[0].exceeds)fail('Số lượng vượt số lượng đơn bán.',409);
+          if((await client.query('select $1::numeric+$2::numeric>$3::numeric exceeds',[held,qty,source.ordered_quantity])).rows[0].exceeds)reuseHeld=true;
+          selected.push({source,input,qty});
+        }
+        if(reuseHeld){
+          const requests=(await client.query("select * from local_production_sales_requests where order_id=$1 and status in ('SUBMITTED','ACCEPTED') order by id for update",[orderId])).rows;
+          const candidates=[] as Array<{request:Row;lines:Body[]}>;
+          for(const request of requests){
+            const saved=(await client.query(`select l.*,coalesce((select sum(a.quantity) from local_production_sales_allocations a where a.request_line_id=l.id),0) allocated from local_production_sales_request_lines l where l.request_id=$1 order by l.id for update`,[request.id])).rows;
+            const lines:Body[]=[];
+            for(const {source,input,qty} of selected){
+              const line=saved.find((line:Row)=>line.source_line_key===source.source_line_key);
+              if(!line || !sameProductionLine(source,line) || (await client.query('select $1::numeric+$2::numeric>$3::numeric exceeds',[line.allocated,qty,line.requested_quantity])).rows[0].exceeds)break;
+              lines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan});
+            }
+            if(lines.length===selected.length)candidates.push({request,lines});
+          }
+          if(candidates.length!==1)fail('Số lượng đang thuộc nhiều yêu cầu hoặc đơn nguồn đã thay đổi. Kiểm tra phần đã lập lệnh / yêu cầu cũ rồi chọn lại số lượng.',409);
+          const candidate=candidates[0];
+          if(candidate.request.status==='SUBMITTED')await client.query("update local_production_sales_requests set status='ACCEPTED',updated_at=now() where id=$1",[candidate.request.id]);
+          await client.query("insert into local_production_sales_events(request_id,action,from_status,to_status,actor_id,data) values($1,'DIRECT_CREATE',$2,'ACCEPTED',$3,$4::jsonb)",[candidate.request.id,candidate.request.status,d.actor(),JSON.stringify({source:'CRM_ORDER',order_id:orderId,approval_required:false,reused_source_reservation:true})]);
+          return allocateAccepted(client,candidate.request.id,{...req.body,planned_start_date:start,planned_end_date:due,lines:candidate.lines});
+        }
+        const linkage=(await client.query(`insert into local_production_sales_requests(order_id,order_updated_at_snapshot,status,due_date,priority,notes,submitted_by,idempotency_key)
+          values($1,$2,'ACCEPTED',$3,'NORMAL',$4,$5,$6) returning *`,[orderId,order.updated_at,due,req.body.notes || null,d.actor(),req.body.idempotency_key])).rows[0];
+        const allocationLines=[];
+        for(const {source,input,qty} of selected){
+          const line=(await client.query(`insert into local_production_sales_request_lines(request_id,source_line_key,source_line_index,source_line_snapshot,product_id,product_sku,product_name,ordered_quantity,requested_quantity)
+            values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9) returning *`,[linkage.id,source.source_line_key,source.source_line_index,JSON.stringify(source.source_line_snapshot),source.product_id,source.product_sku,source.product_name,source.ordered_quantity,qty])).rows[0];
+          allocationLines.push({request_line_id:line.id,quantity:qty,fabric_variant_id:input.fabric_variant_id,reference_images:input.reference_images,cutting_plan:input.cutting_plan});
+        }
+        await client.query("insert into local_production_sales_events(request_id,action,to_status,actor_id,data) values($1,'DIRECT_CREATE','ACCEPTED',$2,$3::jsonb)",[linkage.id,d.actor(),JSON.stringify({source:'CRM_ORDER',order_id:orderId,approval_required:false,line_count:selected.length})]);
+        return allocateAccepted(client,linkage.id,{...req.body,planned_start_date:start,planned_end_date:due,lines:allocationLines});
+      });
+      res.status(result.reused?200:201).json(result);
+    }catch(error){d.sendError(res,error);}
+  });
+
+  app.post("/api/production-sales/requests/:id/allocate", async (req, res) => {
+    try {
+      const result = await mutate(`SALE_ALLOCATE:${req.params.id}`, req.body || {}, async (client) => {
+        return allocateAccepted(client,String(req.params.id),req.body || {});
       });
       res.status(result.reused ? 200 : 201).json(result);
     } catch (error) { d.sendError(res, error); }

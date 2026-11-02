@@ -13,7 +13,8 @@ const field=(name,context)=>vm.runInContext(compile(`globalThis.${name}=${initia
 const product=(patch={})=>({id:'test-product',name:'TEST product',quantity:2,weightInput:'2.000',code:'TEST-001',...patch});
 const parcel=(patch={})=>({id:'test-parcel',weight:0,weightInput:'',length:20,width:30,height:40,...patch});
 function harness(){
-  let sequence=0;const c=vm.createContext({...form,formatGhnIntegerInput,parseGhnIntegerInput,buildGhnQuoteSnapshot,buildGhnCreateParcelItemName,crypto:{randomUUID:()=>`synthetic-${++sequence}`},locked:false,parcels:[parcel()],items:[product()],weightFollowsProducts:true,multiEditorOpen:false,customOrderNumber:'TEST-REF',useMemo:fn=>fn(),requestAnimationFrame:()=>{},dialogContent:{current:null},provinceId:'202',districtId:'1444',wardCode:'020308',toAddress:'Synthetic destination',cod:0,insurance:0,collectFailed:false,failedCod:0,numericComposing:false});
+  let sequence=0;const c=vm.createContext({...form,formatGhnIntegerInput,parseGhnIntegerInput,buildGhnQuoteSnapshot,buildGhnCreateParcelItemName,crypto:{randomUUID:()=>`synthetic-${++sequence}`},locked:false,parcels:[parcel()],items:[product()],weightFollowsProducts:true,multiEditorOpen:false,customOrderNumber:'TEST-REF',addressMode:'OLD3',useMemo:fn=>fn(),requestAnimationFrame:()=>{},dialogContent:{current:null},provinceId:'202',districtId:'1444',wardCode:'020308',toAddress:'Synthetic destination',cod:0,insurance:0,collectFailed:false,failedCod:0,numericComposing:false});
+  Object.assign(c,{newAddress:{provinceId:'',wardId:''},order:null,toName:'Synthetic',toPhone:'0900000003',note:'',requiredNote:'KHONGCHOXEMHANG',payment:'2'});
   for(const name of ['parcels','items','weightFollowsProducts','multiEditorOpen'])c['set'+name[0].toUpperCase()+name.slice(1)]=value=>c[name]=typeof value==='function'?value(c[name]):value;
   for(const name of ['blankParcel','parcelInputId','changeParcel','changeOrderWeight','useProductWeight','addParcel','removeParcel','updateItem'])field(name,c);
   const render=()=>{for(const name of ['productWeight','productWeightInputError','effectiveParcels','quoteInput'])field(name,c);};render();return {c,render};
@@ -42,10 +43,21 @@ check('blank unit weights allowed after manual weighing; malformed nonempty valu
   const {c,render}=harness();c.changeOrderWeight('4.000');c.updateItem(0,'weightInput','');render();assert.ok(c.quoteInput.snapshot);assert.equal(form.buildGhnProductLines(c.items)[0].weight,undefined);
   for(const value of ['0','-1','2,5','1e3','50.001']){c.updateItem(0,'weightInput',value);render();assert.equal(c.quoteInput.snapshot,null);assert.ok(c.productWeightInputError);}
 });
-check('sum boundaries are safe and missing, invalid quantity or over50kg cannot autoquote',()=>{
+check('product aggregate may exceed 50kg while physical parcels must be declared independently',()=>{
   assert.equal(form.calculateGhnProductWeight([product({weightInput:'25.000'})]).total,50000);
-  for(const patch of [{weightInput:''},{weightInput:'25.001'},{quantity:0},{quantity:1001},{quantity:0.5},{quantity:NaN}])assert.equal(form.calculateGhnProductWeight([product(patch)]).total,null);
+  assert.equal(form.calculateGhnProductWeight([product({weightInput:'30.000'})]).total,60000);
+  assert.equal(form.calculateGhnProductWeight([product({quantity:100,weightInput:'50.000'})]).total,5000000);
+  for(const patch of [{weightInput:''},{weightInput:'50.001'},{weightInput:'50.000',quantity:101},{quantity:0},{quantity:1001},{quantity:0.5},{quantity:NaN}])assert.equal(form.calculateGhnProductWeight([product(patch)]).total,null);
   assert.equal(form.calculateGhnProductWeight([product({quantity:1,weightInput:'1'}),product({quantity:1,weightInput:'2'})]).total,3);
+  const {c,render}=harness();c.updateItem(0,'weightInput','30.000');render();assert.equal(c.productWeight.total,60000);assert.equal(c.quoteInput.snapshot,null);assert.match(c.quoteInput.error,/Thêm kiện/);
+  c.changeOrderWeight('30.000');render();c.addParcel();c.changeParcel(c.parcels[1].id,{weight:30000,weightInput:'30.000',length:30,width:20,height:20});render();assert.equal(c.quoteInput.snapshot.feeData.weight,60000);assert.equal(c.quoteInput.snapshot.feeData.items.length,2);
+});
+check('actual dialog validation shows a valid multi-parcel total above50kg and rejects one oversized parcel',()=>{
+  const {c,render}=harness();c.weightFollowsProducts=false;c.parcels=[parcel({weight:30000,weightInput:'30.000'}),parcel({id:'test-parcel-2',weight:30000,weightInput:'30.000'})];render();
+  c.ghnDimensionalWeightGrams=()=>1000;
+  const validate=()=>{for(const name of ['parcelWeightIsValid','parcelDimensionsAreComplete','totalWeight','parcelWeightValid','parcelDimensionsComplete','dimensionalWeight','parcelValid','invalidParcelIndex','parcelCreateError'])field(name,c);};validate();
+  assert.equal(c.totalWeight,60000);assert.equal(c.parcelValid,true);assert.equal(c.parcelCreateError,'');assert.equal(formatGhnIntegerInput(String(c.totalWeight)),'60.000');
+  c.parcels=[parcel({weight:60000,weightInput:'60.000'})];render();validate();assert.equal(c.parcelValid,false);assert.match(c.parcelCreateError,/Thêm kiện/);
 });
 check('prefill uses explicit per-unit grams/codes only and preserves bad input',()=>{
   const rows=form.createGhnProductDrafts([{name:'A',quantity:2,weight:9999,sku:'SKU-A'},{name:'B',quantity:1,unit_weight_grams:2000,product_code:'SKU-B'},{name:'C',quantity:1,weight_grams:'bad'},{product:{name:'D',weight_grams:1500,sku:'SKU-D'},quantity:2}], '',()=> 'synthetic');

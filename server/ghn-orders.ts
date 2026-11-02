@@ -1,3 +1,5 @@
+import { readGhnNewDirectory } from './ghn-new-address.js';
+import { readGhnProviderJson } from './ghn-provider-json.js';
 import type express from 'express';
 import type { Pool, PoolClient } from 'pg';
 import { createHash, randomUUID } from 'node:crypto';
@@ -13,16 +15,17 @@ export const GHN_PACKED_PARCEL_NAME = 'Kiện hàng đã đóng gói';
 const item = z.object({ name: z.string().trim().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1), length: integer(200,1), width: integer(200,1), height: integer(200,1), price: integer(50000000).default(0) }).strict();
 const payload = z.object({
   to_name: z.string().trim().min(1).max(100), to_phone: z.string().trim().regex(/^(?:0\d{9}|\+84\d{9})$/),
-  to_address: z.string().trim().min(3).max(500), to_district_id: integer(99999999,1), to_ward_code: z.string().regex(/^[A-Za-z0-9_-]{1,30}$/),
-  weight: integer(50000,1), length: integer(200,1).optional(), width: integer(200,1).optional(), height: integer(200,1).optional(),
+  to_address: z.string().trim().min(3).max(500), to_district_id: integer(99999999,1).optional(), to_ward_code: z.string().regex(/^[A-Za-z0-9_-]{1,30}$/).optional(),
+  // Aggregate of up to 100 measured parcels; each item's existing bound is 50 kg.
+  weight: integer(5000000,1), length: integer(200,1).optional(), width: integer(200,1).optional(), height: integer(200,1).optional(),
   cod_amount: integer(50000000), insurance_value: integer(5000000), cod_failed_amount: integer(50000000).default(0),
   note: z.string().trim().max(1000).default(''), required_note: z.enum(['KHONGCHOXEMHANG','CHOXEMHANGKHONGTHU','CHOTHUHANG']),
   content: z.string().trim().min(1).max(2000), payment_type_id: z.union([z.literal(1),z.literal(2)]),
-  service_type_id: z.union([z.literal(2),z.literal(5)]), service_id: integer(99999999,1), items: z.array(item).min(1).max(100),
+  service_type_id: z.union([z.literal(2),z.literal(5)]), service_id: integer(99999999,1).optional(), items: z.array(item).min(1).max(100),
 }).strict();
 const createSchema = z.object({ idempotencyKey: z.string().uuid(), shopId: z.string().regex(/^[1-9]\d{0,15}$/),
   orderId: z.string().min(1).max(100).nullable().default(null), orderNumber: z.string().trim().max(100).default(''),
-  provinceId: integer(99999999,1), orderData: payload,
+  provinceId: integer(99999999,1), addressMode:z.literal('NEW2').optional(), newWardId:integer(99999999,1).optional(), orderData: payload,
   // Optional metadata has no defaults/transforms: historical request hashes stay unchanged.
   productLines: z.array(z.object({ name: z.string().min(1).max(200), quantity: integer(1000,1), weight: integer(50000,1).optional(), code: z.string().min(1).max(100).optional() }).strict()).min(1).max(100).optional(),
 }).strict();
@@ -124,6 +127,15 @@ export class GhnOrders {
       if (!result.success || !Array.isArray(result.data)) throw fail('Không xác minh được địa chỉ hoặc dịch vụ GHN.',502);
       return result.data as Record<string,unknown>[];
     };
+    if(input.addressMode==='NEW2') {
+      if(input.orderData.to_district_id!==undefined||input.orderData.to_ward_code!==undefined||input.orderData.service_id!==undefined)throw fail('Không trộn mã địa chỉ cũ vào địa chỉ mới.');
+      const province=(await readGhnNewDirectory(config,this.fetcher)).find(row=>row._id===input.provinceId);
+      const ward=(await readGhnNewDirectory(config,this.fetcher,input.provinceId)).find(row=>row._id===input.newWardId&&row.parent_id===input.provinceId);
+      if(!province||!ward)throw fail('Tỉnh và phường/xã mới GHN không khớp.');
+      validateGhnPackedParcel(input.orderData);
+      return {...input.orderData,to_province_name:province.name,to_ward_name:ward.name,to_district_name:'',is_new_to_address:true};
+    }
+    if(input.newWardId!==undefined||!input.orderData.to_district_id||!input.orderData.to_ward_code||!input.orderData.service_id)throw fail('Chọn đủ địa chỉ và dịch vụ GHN cũ.');
     const province = (await read('get_provinces')).find(row => row.ProvinceID === input.provinceId);
     const district = (await read('get_districts',{provinceId:input.provinceId})).find(row => row.DistrictID === input.orderData.to_district_id);
     const ward = (await read('get_wards',{districtId:input.orderData.to_district_id})).find(row => String(row.WardCode) === input.orderData.to_ward_code);
@@ -133,6 +145,16 @@ export class GhnOrders {
     validateGhnPackedParcel(input.orderData);
     const originWard = sender.metadata.ward_code;
     return { ...input.orderData, to_province_name:String(province.ProvinceName), to_district_name:String(district.DistrictName), to_ward_name:String(ward.WardName), is_new_to_address:false, from_district_id:sender.district, ...(typeof originWard==='string'&&/^[\w-]{1,30}$/.test(originWard)?{from_ward_code:originWard}:{}) };
+  }
+  async preview(actor:string,raw:unknown) {
+    const input=createSchema.parse(raw);if(input.addressMode!=='NEW2')throw fail('Xem trước địa chỉ mới yêu cầu hệ hai cấp.');
+    await this.scope(this.pool,actor,input.orderId,true);validateGhnProductLines(input);validateGhnPackedParcel(input.orderData);
+    const config=await this.config(),body=await this.validate(input,config);
+    const response=await this.fetcher('https://online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/preview',{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',Token:config.token,ShopId:input.shopId},body:JSON.stringify(body)});
+    const result=await readGhnProviderJson(response),data=result.data as Record<string,unknown>|undefined;
+    if(!response.ok||result.code!==200||!data||data.order_code!==''||typeof data.total_fee!=='number'||!Number.isSafeInteger(data.total_fee)||data.total_fee<0)throw fail('GHN chưa xác nhận được cước cho địa chỉ mới.',502);
+    const current=await this.config();await this.scope(this.pool,actor,input.orderId,true);if(current.revision!==config.revision||current.token!==config.token||!current.shops.includes(input.shopId))throw fail('Cấu hình đã thay đổi khi xem trước.',409);
+    return {total:data.total_fee};
   }
   async create(actor:string,raw:unknown) {
     const input = createSchema.parse(raw);
@@ -267,7 +289,8 @@ export class GhnOrders {
         const submitted=row.request_data.orderData;
         const failedCodMatches=data && (data.cod_failed_amount === undefined ? submitted.cod_failed_amount === 0 : typeof data.cod_failed_amount === 'number' && Number.isSafeInteger(data.cod_failed_amount) && data.cod_failed_amount === submitted.cod_failed_amount);
         const physicalFields = submitted.items.length > 1 ? ['to_district_id','weight','cod_amount','insurance_value','service_type_id','payment_type_id'] : ['to_district_id','weight','length','width','height','cod_amount','insurance_value','service_type_id','payment_type_id'];
-        const same=data && failedCodMatches && ghnMultiParcelEvidenceMatches(submitted, data.items) && ['to_name','to_phone','to_address','to_ward_code'].every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && physicalFields.every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
+        const newAddressMatches=row.request_data.addressMode!=='NEW2'||data?.is_new_to_address===true&&data.to_province_name===(await readGhnNewDirectory(config,this.fetcher)).find(value=>value._id===row.request_data.provinceId)?.name&&data.to_ward_name===(await readGhnNewDirectory(config,this.fetcher,row.request_data.provinceId)).find(value=>value._id===row.request_data.newWardId)?.name;
+        const same=data && newAddressMatches && failedCodMatches && ghnMultiParcelEvidenceMatches(submitted, data.items) && (row.request_data.addressMode==='NEW2'?['to_name','to_phone','to_address']:['to_name','to_phone','to_address','to_ward_code']).every(field=>String(data[field])===String(submitted[field as keyof typeof submitted])) && physicalFields.filter(field=>row.request_data.addressMode!=='NEW2'||field!=='to_district_id').every(field=>Number(data[field])===Number(submitted[field as keyof typeof submitted]));
         if (response.ok && result.code===200 && same && String(data.shop_id)===row.shop_id && data.client_order_code===row.client_order_code && /^[A-Za-z0-9_-]{3,60}$/.test(data.order_code||'')) {
           row=(await this.pool.query<Attempt>(`update integration_private.ghn_order_attempts set status='REMOTE_CREATED',order_code=$2,result_data=$3::jsonb,updated_at=now() where id=$1 and status in ('IN_FLIGHT','UNKNOWN') returning *`,[row.id,data.order_code,JSON.stringify(this.safeResult(data))])).rows[0]||await this.read(actor,key);
           if(row.status==='REMOTE_CREATED') return this.finalize(row);
@@ -309,6 +332,7 @@ export class GhnOrders {
 export function registerGhnOrders(app:express.Express, service:GhnOrders,actor:()=>string) {
   const send=(res:express.Response,error:unknown)=>res.status(error instanceof z.ZodError?400:Number((error as {status?:number}).status||503)).json({message:error instanceof z.ZodError?'Thông tin tạo đơn GHN không hợp lệ.':error instanceof Error && 'status' in error?error.message:'Không xử lý được lượt tạo GHN. Hãy kiểm tra trạng thái trước khi thử lại.'});
   app.get('/api/ghn-orders/recent',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.recent(actor(),typeof req.query.orderId==='string'?req.query.orderId:null));}catch(error){send(res,error);}});
+  app.post('/api/ghn-orders/preview',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.preview(actor(),req.body));}catch(error){send(res,error);}});
   app.post('/api/ghn-orders',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.create(actor(),req.body));}catch(error){send(res,error);}});
   app.get('/api/ghn-orders/:key',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.status(actor(),String(req.params.key)));}catch(error){send(res,error);}});
   app.post('/api/ghn-orders/:key/reconcile',async(req,res)=>{try{res.setHeader('Cache-Control','no-store');res.json(await service.status(actor(),String(req.params.key),true));}catch(error){send(res,error);}});

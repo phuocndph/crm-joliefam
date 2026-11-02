@@ -180,6 +180,7 @@ try {
       if (text.startsWith('insert into local_auth_audit_events')) { this.audits.push(structuredClone(params)); return rows([]); }
       if (text.startsWith("update integration_private.ghn_order_attempts set status='success'")) { const row = this.attempts.find(row => row.id === params[0]); assert.ok(row); row.status = 'SUCCESS'; return rows([row]); }
       if (text.startsWith("update integration_private.ghn_order_attempts set status='unknown'")) { const row = this.attempts.find(row => row.id === params[0]); if (row?.status === 'IN_FLIGHT') row.status = 'UNKNOWN'; return rows([]); }
+      if (text.startsWith("update integration_private.ghn_order_attempts set status='rejected'")) { const row = this.attempts.find(row => row.id === params[0]); if (row?.status === 'IN_FLIGHT') {row.status = 'REJECTED';row.result_data=JSON.parse(params[1]);} return rows([]); }
       throw new Error('Unexpected synthetic SQL: ' + text);
     }
   }
@@ -196,7 +197,7 @@ try {
     },
   });
   const makeRuntime = () => {
-    const db = new MemorySqlFixture(), wire = { fee: [], create: [], all: [] };
+    const db = new MemorySqlFixture(), wire = { fee: [], create: [], preview: [], all: [] };
     const config = { token: 'synthetic-billing-only', primaryShop: '123', shops: ['123'], configured: true, source: 'saved', mode: 'ENABLED', revision: 1, hasSavedKey: true };
     const provider = async (urlText, init = {}) => {
       const url = new URL(urlText), path = url.pathname.split('/public-api/')[1], body = init.body ? JSON.parse(init.body) : {};
@@ -205,9 +206,12 @@ try {
       if (path === 'master-data/province') return response({ code: 200, data: [{ ProvinceID: 202, ProvinceName: 'Synthetic Province' }] });
       if (path === 'master-data/district') return response({ code: 200, data: [{ DistrictID: 1444, ProvinceID: 202, DistrictName: 'Synthetic District' }] });
       if (path === 'master-data/ward') return response({ code: 200, data: [{ WardCode: '020308', DistrictID: 1444, WardName: 'Synthetic Ward' }] });
+      if (path === 'v3/master-data/province/all') return response({ code: 200, data: [{ _id: 202, name: 'Synthetic New Province' }] });
+      if (path === 'v3/master-data/ward/all-by-province-id') return response({ code: 200, data: [{ _id: 2001, parent_id: 202, name: 'Synthetic New Ward' }] });
       if (path === 'v2/shipping-order/available-services') return response({ code: 200, data: structuredClone(services) });
       if (path === 'v2/shipping-order/fee') { wire.fee.push(structuredClone(body)); return response({ code: 200, data: { total: body.items ? body.items.reduce((sum,row)=>sum+row.weight*4,0) : 12345 } }); }
-      if (path === 'v2/shipping-order/create') { wire.create.push(structuredClone(body)); if(wire.throwCreate)throw new Error('Synthetic lost response'); return response({ code: 200, data: { order_code: 'TESTBILLING' + wire.create.length, total_fee: body.items.reduce((sum,row)=>sum+row.weight*4,0) } }); }
+      if (path === 'v2/shipping-order/preview') { wire.preview.push(structuredClone(body)); if(wire.rejectPreview)return response({code:400,message:'Synthetic unsupported weight'},400);return response({ code: 200, data: { order_code: '', total_fee: body.items.reduce((sum,row)=>sum+row.weight*4,0) } }); }
+      if (path === 'v2/shipping-order/create') { wire.create.push(structuredClone(body)); if(wire.throwCreate)throw new Error('Synthetic lost response');if(wire.rejectCreate)return response({code:400,message:'Synthetic unsupported weight'},400);return response({ code: 200, data: { order_code: 'TESTBILLING' + wire.create.length, total_fee: body.items.reduce((sum,row)=>sum+row.weight*4,0) } }); }
       if (path === 'v2/shipping-order/detail-by-client-code') return response({code:200,data:wire.lookup||{}});
       throw new Error('Unexpected injected provider route: ' + path);
     };
@@ -282,7 +286,7 @@ try {
   });
 
   await check('multiple physical parcels quote and create identically while COD and products remain order-level', async () => {
-    for(const weights of [[1000,2000],[20000,20000],[25000,25000]]){
+    for(const weights of [[1000,2000],[20000,20000],[25000,25000],[30000,30000],[40000,40000,40000],Array(100).fill(50000)]){
       const runtime=makeRuntime(),parcels=weights.map((weight,index)=>({...packed(weight),length:40+index}));
       const made=buildGhnQuoteSnapshot({...input(undefined),parcels});assert.ok(made.snapshot,made.error);const value=made.snapshot;
       const request=createInput(value),quote=await runtime.adapter.ghn({action:'calculate_fee',shopId:'123',feeData:{...value.feeData,service_id:53320,service_type_id:5}});
@@ -290,10 +294,50 @@ try {
       const fee=runtime.wire.fee.at(-1),sent=runtime.wire.create.at(-1);assert.equal(sent.weight,weights.reduce((a,b)=>a+b,0));assert.equal(sent.service_type_id,5);
       for(const field of ['length','width','height']){assert.equal(fee[field],undefined);assert.equal(sent[field],undefined);}
       assert.deepEqual(sent.items.map(({name,price,...physical})=>physical),fee.items.map(({name,...physical})=>physical));
-      assert.equal(sent.items.length,2);assert.equal(sent.cod_amount,100000);assert.equal(sent.insurance_value,200000);assert.equal(sent.items[0].quantity,1);assert.equal(sent.items[1].quantity,1);
-      assert.equal(sent.items[0].name,ghnPackedParcelItemName(sent.content,0,2));assert.equal(sent.items[1].name,'Kiện 2/2: Cùng đơn hàng');
+      assert.equal(sent.items.length,weights.length);assert.equal(sent.cod_amount,100000);assert.equal(sent.insurance_value,200000);assert.ok(sent.items.every(row=>row.quantity===1));
+      assert.equal(sent.items[0].name,ghnPackedParcelItemName(sent.content,0,weights.length));assert.equal(sent.items[1].name,`Kiện 2/${weights.length}: Cùng đơn hàng`);
       assert.match(sent.content,/× 3/);assert.match(sent.content,/× 7/);
       const before=runtime.wire.create.length;await runtime.service.create('billing-fixture-admin',request);assert.equal(runtime.wire.create.length,before);
+    }
+  });
+
+  await check('NEW2 preview and create preserve heavy manifest and never use OLD3 IDs or create during preview',async()=>{
+    for(const weights of [[30000,30000],[40000,40000,40000],Array(100).fill(50000)]){
+      const runtime=makeRuntime(),parcels=weights.map(weight=>packed(weight));
+      const value=buildGhnQuoteSnapshot({...input(undefined),addressMode:'NEW2',newAddress:{newWardId:2001},wardCode:'2001',parcels}).snapshot;
+      const request=createInput(value);request.addressMode='NEW2';request.newWardId=2001;
+      delete request.orderData.to_district_id;delete request.orderData.to_ward_code;delete request.orderData.service_id;
+      const preview=await runtime.service.preview('billing-fixture-admin',request);
+      assert.equal(runtime.wire.create.length,0);assert.equal(runtime.db.reservations,0);
+      const result=await runtime.service.create('billing-fixture-admin',request);assert.equal(result.data.attempt_status,'SUCCESS');assert.equal(result.data.total_fee,preview.total);
+      const seen=runtime.wire.preview[0],sent=runtime.wire.create[0];assert.equal(sent.weight,weights.reduce((a,b)=>a+b,0));assert.equal(sent.weight,seen.weight);assert.deepEqual(sent.items,seen.items);
+      assert.equal(sent.service_type_id,5);assert.equal(sent.cod_amount,100000);assert.equal(sent.insurance_value,200000);
+      for(const body of [seen,sent]){assert.equal(body.is_new_to_address,true);for(const field of ['to_district_id','to_ward_code','service_id','length','width','height'])assert.equal(body[field],undefined);}
+      await runtime.service.create('billing-fixture-admin',request);assert.equal(runtime.wire.create.length,1);
+    }
+  });
+
+  await check('heavy totals cannot bypass per-parcel, count, integer and manifest-sum guards in either address mode',async()=>{
+    const value=buildGhnQuoteSnapshot({...input(undefined),parcels:[packed(30000),packed(30000)]}).snapshot;
+    const mutations=[data=>data.weight++,data=>data.weight=5000001,data=>data.weight=Number.MAX_SAFE_INTEGER,data=>data.weight=NaN,data=>data.weight=Infinity,data=>data.weight=60000.5,data=>data.items[0].weight=50001,data=>data.items=Array(101).fill(data.items[0]),data=>{delete data.items;},data=>data.items=[]];
+    for(const mutate of mutations){
+      const runtime=makeRuntime(),fee={...structuredClone(value.feeData),service_id:53320,service_type_id:5};mutate(fee);await assert.rejects(()=>runtime.adapter.ghn({action:'calculate_fee',shopId:'123',feeData:fee}));
+      for(const mode of ['OLD3','NEW2']){
+        const request=createInput(value);mutate(request.orderData);
+        if(mode==='NEW2'){request.addressMode=mode;request.newWardId=2001;delete request.orderData.to_district_id;delete request.orderData.to_ward_code;delete request.orderData.service_id;await assert.rejects(()=>runtime.service.preview('billing-fixture-admin',request));}
+        await assert.rejects(()=>runtime.service.create('billing-fixture-admin',request));
+      }
+      assert.equal(runtime.wire.fee.length,0);assert.equal(runtime.wire.preview.length,0);assert.equal(runtime.wire.create.length,0);assert.equal(runtime.db.reservations,0);
+    }
+  });
+
+  await check('carrier rejection of a heavy manifest stays rejected without a fabricated success or clamped retry',async()=>{
+    const value=buildGhnQuoteSnapshot({...input(undefined),parcels:[packed(30000),packed(30000)]}).snapshot;
+    for(const mode of ['OLD3','NEW2']){
+      const runtime=makeRuntime(),request=createInput(value);runtime.wire.rejectCreate=true;
+      if(mode==='NEW2'){request.addressMode=mode;request.newWardId=2001;delete request.orderData.to_district_id;delete request.orderData.to_ward_code;delete request.orderData.service_id;runtime.wire.rejectPreview=true;await assert.rejects(()=>runtime.service.preview('billing-fixture-admin',request));assert.equal(runtime.db.reservations,0);}
+      const result=await runtime.service.create('billing-fixture-admin',request);assert.equal(result.data.attempt_status,'REJECTED');assert.equal(result.data.order_code,undefined);assert.equal(runtime.wire.create[0].weight,60000);assert.equal(runtime.db.tracking.length,0);assert.equal(runtime.db.audits.length,0);
+      assert.equal((await runtime.service.create('billing-fixture-admin',request)).data.attempt_status,'REJECTED');assert.equal(runtime.wire.create.length,1);
     }
   });
 

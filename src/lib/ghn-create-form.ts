@@ -36,7 +36,7 @@ export function calculateGhnProductWeight(items: readonly Pick<GhnProductDraft, 
     const row = items[index], grams = parseGhnIntegerInput(row.weightInput, 1, 50000);
     if (grams === null || !Number.isSafeInteger(row.quantity) || row.quantity < 1 || row.quantity > 1000) return { total: null, invalidIndex: index, error: `SP ${index + 1}: nhập KL mỗi sản phẩm (gram) và số lượng hợp lệ để cộng khối lượng.` };
     total += grams * row.quantity;
-    if (!Number.isSafeInteger(total) || total > 50000) return { total: null, invalidIndex: index, error: 'Tổng khối lượng sản phẩm vượt 50.000 gram. Nhập lại hoặc khai khối lượng kiện đã cân.' };
+    if (!Number.isSafeInteger(total) || total > 5000000) return { total: null, invalidIndex: index, error: 'Tổng khối lượng sản phẩm vượt phạm vi 100 kiện, mỗi kiện 50.000 gram. Khai các kiện đã cân để tiếp tục.' };
   }
   return { total, invalidIndex: -1, error: '' };
 }

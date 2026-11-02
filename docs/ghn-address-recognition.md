@@ -38,3 +38,17 @@ Ngay dưới địa chỉ có gợi ý hành chính khi có truy vấn đủ rõ
 Nhập tiếp, tìm/chọn tay, tải lại danh mục, đóng/mở dialog, đổi đơn hoặc có lượt tạo chưa xác định sẽ vô hiệu hóa tác vụ nhận diện cũ. Phản hồi cũ không được đổi lựa chọn mới; cước cũ bị xóa khi địa chỉ thay đổi. Nút tạo bị khóa trong lúc nhận diện. Có thể nhận diện lại bằng nút ngay dưới địa chỉ. Trạng thái thiếu/lỗi danh mục dừng vòng chờ và hướng dẫn tải lại. Danh mục quận/phường được tái sử dụng theo ID cha trong phiên dialog, tải lại sẽ xóa bộ nhớ này. Chưa có tên kiện hàng thì chưa gọi tính cước để tránh lỗi nhập liệu bị hiểu nhầm là lỗi nhận diện.
 
 Kiểm thử thuần, chỉ dữ liệu tổng hợp: `npx tsx scripts/test-ghn-address-match.mjs`. Kiểm tra UI qua fixture riêng; không tạo vận đơn thật để xác minh chức năng này.
+
+## Địa chỉ mới hai cấp — 01/11/2026
+
+Luồng tạo GHN local có lựa chọn `Địa chỉ cũ · 3 cấp` và `Địa chỉ mới · 2 cấp`. Hệ mới lấy tỉnh/phường trực tiếp từ danh mục v3 GHN, không suy ra quận cũ và không phụ thuộc cấu hình Goong. Có thể dán `101A Hà Huy Giáp pAn Phú Đông TP Hồ Chí Minh`; chỉ nhận diện khi khớp duy nhất, còn mơ hồ yêu cầu chọn tay. Mở lại giữ lựa chọn đã áp dụng.
+
+Nguồn công khai đã kiểm tra:
+- https://developer.ghn.vn/vi/docs/master-data/get-province-new — GET `/v3/master-data/province/all`.
+- https://developer.ghn.vn/vi/docs/master-data/get-ward-new — GET `/v3/master-data/ward/all-by-province-id`, `province_id`, `offset`, `limit` tối đa200; xác minh `parent_id`, tải đủ trang và chặn lặp.
+- https://developer.ghn.vn/vi/docs/order/create — tên tỉnh/phường chuẩn, `is_new_to_address:true`, không quận/huyện.
+- https://developer.ghn.vn/vi/docs/order/preview — POST `/v2/shipping-order/preview`, cùng request tạo nhưng không tạo vận đơn, trả `order_code` rỗng và `total_fee`.
+
+Hệ mới xem trước cước bằng preview, không truyền ID tỉnh/phường mới vào API tính cước/dịch vụ theo quận cũ. Máy chủ xác minh danh mục, cửa hàng, phân quyền và thông số kiện trước preview/tạo. Preview không ghi kỳ tạo hay dữ liệu nghiệp vụ. Báo giá mang đầy đủ ngữ cảnh người nhận, địa chỉ, sản phẩm, kiện, tiền, cửa hàng và loại dịch vụ; đổi hệ/đầu vào làm mất hiệu lực cước cũ. Luồng tạo/idempotency/audit cũ được giữ. Việc đối soát lượt tạo chưa chắc chắn của hệ mới đòi hỏi bằng chứng khẳng định hệ mới và tên tỉnh/phường khớp; thiếu bằng chứng giữ trạng thái chưa rõ.
+
+Sửa thông tin vận đơn mới hai cấp chưa được hỗ trợ tại màn hình sửa cũ: máy chủ chặn trước khi gửi, COD riêng vẫn theo luồng hiện hành. Không tự chuyển địa chỉ mới về quận cũ. Trước tạo chưa hiển thị thời gian giao từ preview; tổng cước là kết quả được sử dụng.

@@ -37,19 +37,25 @@ await check('count, each physical field, and distribution form the price identit
   for(const field of ['weight','length','width','height']){const parcels=[packed(20000),packed(20000)];parcels[1][field]++;assert.notEqual(make(parcels).key,original.key);}
   assert.notEqual(make([packed(40000)]).key,original.key);
 });
-await check('multi requires every real dimension and respects the 50kg total and 100-parcel caps',()=>{
+await check('multi preserves totals above 50kg with each physical bound and the 100-parcel cap',()=>{
   for(const field of ['weight','length','width','height'])for(const value of [undefined,0,-1,0.5,NaN,Infinity,field==='weight'?50001:201]){
     const parcels=[packed(1000),{...packed(1000),[field]:value}];assert.equal(buildGhnQuoteSnapshot(input(parcels)).snapshot,null);
   }
   assert.equal(make([packed(25000),packed(25000)]).feeData.weight,50000);
-  for(const parcels of [[],[packed(25000),packed(25001)],Array.from({length:101},()=>packed(1))])assert.equal(buildGhnQuoteSnapshot(input(parcels)).snapshot,null);
+  assert.equal(make([packed(30000),packed(30000)]).feeData.weight,60000);
+  assert.equal(make([packed(40000),packed(40000),packed(40000)]).feeData.weight,120000);
+  assert.equal(make(Array.from({length:100},()=>packed(50000))).feeData.weight,5000000);
+  for(const parcels of [[],[packed(50001),packed(1)],Array.from({length:101},()=>packed(1))])assert.equal(buildGhnQuoteSnapshot(input(parcels)).snapshot,null);
   assert.equal(make(Array.from({length:100},()=>packed(1))).feeData.items.length,100);
 });
 await check('multi always selects available service5 including less than20kg',()=>{
   const services=[2,5].map(service_type_id=>({service_id:service_type_id,service_type_id,short_name:'Synthetic'}));
-  for(const weight of [2,3000,19999,20000,50000])assert.deepEqual(eligibleGhnServices(services,weight,2).map(row=>row.service_type_id),[5]);
+  for(const weight of [2,3000,19999,20000,50000,60000,100000])assert.deepEqual(eligibleGhnServices(services,weight,2).map(row=>row.service_type_id),[5]);
   assert.deepEqual(eligibleGhnServices(services,19999,1).map(row=>row.service_type_id),[2]);
   assert.deepEqual(eligibleGhnServices(services,1,101),[]);
+  for(const weight of [1,100001,Number.MAX_SAFE_INTEGER,NaN,Infinity,1.5])assert.deepEqual(eligibleGhnServices(services,weight,2),[]);
+  assert.deepEqual(eligibleGhnServices(services,60000),[],'unmanifested single parcel retains its bound');
+  assert.deepEqual(eligibleGhnServices(services,5000000,100).map(row=>row.service_type_id),[5]);
 });
 await check('all-shop comparison prices every parcel and preserves provider totals',async()=>{
   const calls=[],session=createGhnQuoteSession(async(action,body)=>{

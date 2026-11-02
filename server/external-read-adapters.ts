@@ -1,3 +1,4 @@
+import { readGhnNewDirectory } from './ghn-new-address.js';
 import { GoongAddressAdapter, goongEnvironment, goongPublicStatus, type GoongRuntimeConfig } from './goong-address-adapter.js';
 
 type Body = Record<string, any>;
@@ -146,6 +147,7 @@ export class ExternalReadAdapters {
     }
     if (action === 'address_autocomplete_status') return { success: true, data: await this.goong.status(), source: 'goong' };
     if (action === 'address_autocomplete') return { success: true, data: await this.goong.autocomplete(body.input, actor), source: 'goong' };
+    if (action === 'get_new_provinces' || action === 'get_new_wards') { const config = runtimeConfig || await this.snapshot(); return {success:true,data:await readGhnNewDirectory(config,this.fetcher,action === 'get_new_wards' ? positive(body.provinceId,'Tỉnh mới') : undefined)}; }
     const supported = ['get_provinces', 'get_districts', 'get_wards', 'get_shops', 'get_services', 'calculate_fee', 'track', 'track_order', 'get_order_detail'];
     if (!supported.includes(action)) return { success: false, error: 'Thao tác này chưa được hỗ trợ an toàn trên VPS. Chưa gửi hoặc thay đổi vận đơn GHN.', mode: 'read_only' };
     const config = runtimeConfig || await this.snapshot();
@@ -164,7 +166,7 @@ export class ExternalReadAdapters {
       if (!body.feeData || typeof body.feeData !== 'object' || Array.isArray(body.feeData)) throw failure('Thông tin tính cước không hợp lệ.');
       const fee = body.feeData;
       const sender = await this.sender(config, body.shopId); shop = sender.id;
-      const weight = ghnInteger(fee.weight, 1, 50000, 'Khối lượng');
+      const weight = ghnInteger(fee.weight, 1, 5000000, 'Tổng khối lượng');
       data = { shop_id: Number(shop), to_district_id: positive(fee.to_district_id, 'Quận nhận'), weight };
       for (const key of ['from_district_id', 'service_id', 'service_type_id']) if (fee[key] !== undefined) { const number = Number(fee[key]); if (!Number.isSafeInteger(number) || number < 0) throw failure('Thông tin tính cước không hợp lệ.'); data[key] = number; }
       for (const [key, max] of [['insurance_value', 5000000], ['cod_value', 50000000], ['cod_failed_amount', 50000000]] as const) {
@@ -186,6 +188,9 @@ export class ExternalReadAdapters {
       if (dimensionsProvided.length === dimensionFields.length) for (const field of dimensionFields) data[field] = ghnInteger(fee[field], 1, 200, 'Kích thước kiện hàng');
       if (fee.items !== undefined && !Array.isArray(fee.items)) throw failure('Danh sách kiện hàng không hợp lệ.');
       const parcelCount = Array.isArray(fee.items) ? fee.items.length : 1;
+      // Without an explicit manifest this remains a one-parcel request. Never
+      // relax the per-parcel bound by accepting an oversized aggregate alone.
+      if (parcelCount < 1 || parcelCount > 100 || weight < parcelCount || weight > parcelCount * 50000) throw failure('Tổng khối lượng không phù hợp với số kiện đã khai.');
       if (fee.service_type_id === undefined || Number(fee.service_type_id) !== (weight < 20000 && parcelCount === 1 ? 2 : 5)) throw failure('Loại dịch vụ GHN không phù hợp với cân nặng hoặc số kiện.');
       if (dimensionsProvided.length === dimensionFields.length && fee.items === undefined) throw failure('Báo giá hoàn chỉnh phải có đúng một kiện đã đóng gói.');
       if (Array.isArray(fee.items)) {
