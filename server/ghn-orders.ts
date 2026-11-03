@@ -135,7 +135,8 @@ export class GhnOrders {
       and not exists(select 1 from local_projection_tombstones t where t.source_table='orders' and t.source_key=o.id)`,[orderId])).rows[0];
     if (!order || (principal.role !== 'admin' && order.manager_id !== principal.manager)) throw fail('Không tìm thấy đơn hàng trong phạm vi quản lý.',404);
     if (!order.manager_id || !order.tenant_id) throw fail('Đơn hàng thiếu phạm vi quản lý hoặc đơn vị. Cần kiểm tra trước khi tạo GHN.',409);
-    if (eligible && !['confirmed','processing','shipped','partially_delivered','delivering'].includes(String(order.status))) throw fail('Trạng thái đơn hàng chưa phù hợp để tạo vận đơn GHN.',409);
+    // CRM orders start at pending (Chờ xử lý); ZCRM approval remains a separate check below.
+    if (eligible && !['pending','confirmed','processing','shipped','partially_delivered','delivering'].includes(String(order.status))) throw fail('Đơn hàng đã kết thúc hoặc có trạng thái không hợp lệ để tạo vận đơn GHN. Kiểm tra trạng thái trong Đơn hàng.',409);
     if (eligible) await assertZcrmOrderExecutable(db,orderId);
     return {manager:String(order.manager_id),tenant:String(order.tenant_id)};
   }

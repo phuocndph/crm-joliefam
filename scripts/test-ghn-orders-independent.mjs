@@ -139,6 +139,51 @@ try {
     await reject(() => service.create('manager-fixture', input({ orderId: 'order-two' })), 404);
     assert.equal(createCount, 0);
   });
+  const fourParcelRequest = () => {
+    const request = input({orderId:'order-one',entryMode:'PACKAGES'});
+    request.orderData.content='Four measured parcels, total 86 kg';
+    request.orderData.service_type_id=5;request.orderData.service_id=100039;
+    request.orderData.items=[20000,20000,23000,23000].map((weight,index)=>({name:'Kiện '+(index+1),quantity:1,weight,length:50,width:40,height:40,price:0}));
+    request.orderData.weight=86000;
+    for(const field of ['length','width','height'])delete request.orderData[field];
+    return request;
+  };
+  await check('pending CRM and approved ZCRM orders create four exact parcels totaling 86kg and replay once',async()=>{
+    try{
+      for(const approval of [null,'approved']){
+        await reset();await pool.query("update local_orders set status='pending',approval_status=$1 where id='order-one'",[approval]);
+        const before=(await pool.query("select * from local_orders where id='order-one'")).rows[0];
+        const request=fourParcelRequest(),result=await service.create('manager-fixture',request);
+        assert.equal(result.data.attempt_status,'SUCCESS');assert.equal(createCount,1);
+        assert.equal(lastCreate.body.weight,86000);assert.deepEqual(lastCreate.body.items,request.orderData.items);
+        for(const field of ['length','width','height'])assert.equal(lastCreate.body[field],undefined);
+        assert.equal(lastCreate.body.service_type_id,5);assert.equal(lastCreate.body.service_id,100039);
+        assert.equal((await service.create('manager-fixture',request)).data.order_code,result.data.order_code);assert.equal(createCount,1);
+        assert.equal((await pool.query('select package_weight from local_ghn_tracking')).rows[0].package_weight,'86000');
+        assert.deepEqual((await pool.query("select * from local_orders where id='order-one'")).rows[0],before,'GHN creation never changes order status or approval');
+      }
+    }finally{await reset();await pool.query("update local_orders set status='confirmed',approval_status='approved' where id='order-one'");}
+  });
+  await check('unapproved ZCRM pending orders reject before provider create or journal allocation',async()=>{
+    try{
+      for(const approval of ['pending','rejected','returned','draft']){
+        await reset();await pool.query("update local_orders set status='pending',approval_status=$1 where id='order-one'",[approval]);
+        await assert.rejects(()=>service.create('manager-fixture',fourParcelRequest()),error=>error.status===409&&error.code==='ORDER_NOT_APPROVED');
+        assert.equal(createCount,0);assert.equal((await pool.query('select count(*)::int n from integration_private.ghn_order_attempts')).rows[0].n,0);
+        assert.equal((await pool.query('select count(*)::int n from local_ghn_tracking')).rows[0].n,0);
+      }
+    }finally{await reset();await pool.query("update local_orders set status='confirmed',approval_status='approved' where id='order-one'");}
+  });
+  await check('terminal and unknown order statuses remain blocked before provider create or journal allocation',async()=>{
+    try{
+      for(const status of ['cancelled','returned','delivered','self_delivered','unknown','',null]){
+        await reset();await pool.query("update local_orders set status=$1,approval_status=null where id='order-one'",[status]);
+        await reject(()=>service.create('manager-fixture',fourParcelRequest()),409);
+        assert.equal(createCount,0);assert.equal((await pool.query('select count(*)::int n from integration_private.ghn_order_attempts')).rows[0].n,0);
+        assert.equal((await pool.query('select count(*)::int n from local_ghn_tracking')).rows[0].n,0);
+      }
+    }finally{await reset();await pool.query("update local_orders set status='confirmed',approval_status='approved' where id='order-one'");}
+  });
   await check('server verifies shop and address; public result excludes private payload', async () => {
     const request = input(), result = await service.create('admin-fixture', request);
     assert.equal(result.data.attempt_status, 'SUCCESS'); assert.equal(createCount, 1);
