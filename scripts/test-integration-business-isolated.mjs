@@ -95,8 +95,10 @@ try{
  let legacy=await management.connection(admin,'Legacy seven unchanged');legacy=await management.grants(admin,legacy,[{capability:'products.read',resource_ids:[p1]}]);
  const legacyKey=await management.key(admin,legacy,['products.read']),legacyClient=await openMcp(legacyKey.secret);
  assert.deepEqual((await legacyClient.listTools()).tools.map(row=>row.name),['search_products']);assert.deepEqual(jsonData(await legacyClient.callTool({name:'search_products',arguments:{}})).data.map(row=>row.id),[p1]);
- const legacyAll=await call('/api/integration-access/connections/'+legacy.id+'/grants',admin,'PUT',{version:legacy.policy_version,grants:[{capability:'products.read',all_resources:true,resource_ids:[]}],reason:'Reject implicit legacy ALL'});expectStatus(legacyAll,400,'legacy ALL denied');
- pass('Existing seven-capability resource scope remains opt-in and cannot inherit business ALL');
+ expectStatus(await call('/api/integration-access/connections/'+legacy.id+'/grants',admin,'PUT',{version:legacy.policy_version,grants:[{capability:'products.read',all_resources:true,resource_ids:[p1]}],reason:'Reject mixed legacy ALL'}),400,'legacy ALL cannot also list records');
+ legacy=await management.grants(admin,legacy,[{capability:'products.read',all_resources:true,resource_ids:[]}]);
+ assert.deepEqual(jsonData(await legacyClient.callTool({name:'search_products',arguments:{search:'BUSINESS-'}})).data.map(row=>row.id).sort(),[p1,p2].sort(),'explicit legacy ALL covers every active product');
+ pass('Seven-capability scope stays per-record unless an admin explicitly chooses ALL');
  let conn=await management.connection(admin,'Business independent');
  expectStatus(await call('/api/integration-access/connections/'+conn.id+'/grants',admin,'PUT',{version:conn.policy_version,grants:[{capability:'business.customers.write',resource_ids:[]}],reason:'Missing ALL test'}),400,'business must explicitly grant ALL');
  conn=await management.grants(admin,conn,capabilities.map(row=>allGrant(row.id)));
