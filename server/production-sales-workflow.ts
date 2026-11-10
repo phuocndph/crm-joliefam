@@ -116,11 +116,17 @@ export const currentProductionLine = (lines: Row[], saved: Row) =>
 
 const dateText = (value: unknown) => value instanceof Date ? (Number.isNaN(value.getTime()) ? null : businessDateKey(value)) : value ? String(value).slice(0, 10) : null;
 const soldLineName = (item: Body) => String(item.name || item.product_name || canonicalItem(item.product).name || "").trim();
-const sizeTokens = (value: unknown) => [...String(value ?? "").toLowerCase().replace(/\s+/g, "").replace(/[*×]/g, "x").matchAll(/\d+(?:[.,]\d+)?(?:x\d+(?:[.,]\d+)?)+/g)].map((match) => match[0]);
+// Size tokens like "160x200x25". Spaces are only collapsed around the "x" so
+// "giường 1m6 230x235" does not glue into "6230x235", and a trailing weight
+// ("70x140x500g", "45x70x320gsm") is not read as a third dimension.
+const sizeTokens = (value: unknown) => [...String(value ?? "").toLowerCase().replace(/\s*[x*×]\s*/g, "x").matchAll(/(?<![\d.,\p{L}])\d+(?:[.,]\d+)?(?:x\d+(?:[.,]\d+)?(?![\d.,]|\s*(?:g|gr|gram|gsm|oz)\b))+/gu)].map((match) => match[0]);
 /** True when the sold name states a size that differs from the line specification. */
 export const sizeMismatch = (name: unknown, specification: unknown) => {
   const fromName = sizeTokens(name), fromSpec = sizeTokens(specification);
-  return Boolean(fromName.length && fromSpec.length && !fromName.some((token) => fromSpec.includes(token)));
+  // Shorthand names drop the length ("Ga chống thấm 160x15F" for 160x200x15), so a
+  // name size matches when its numbers appear in order inside the specification.
+  const fits = (short: string, full: string) => { const want = short.split("x"); let i = 0; for (const part of full.split("x")) if (part === want[i]) i += 1; return i === want.length; };
+  return Boolean(fromName.length && fromSpec.length && !fromName.some((token) => fromSpec.some((spec) => fits(token, spec))));
 };
 /** Next readable production number for the business month, e.g. SX-2611-007. Caller holds a transaction. */
 export async function nextProductionGroupNumber(client: Pick<PoolClient, "query">) {
