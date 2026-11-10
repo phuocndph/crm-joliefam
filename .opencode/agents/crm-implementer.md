@@ -1,5 +1,5 @@
 ---
-description: Primary implementation agent for bounded CRM and Supabase changes
+description: Primary implementation agent for bounded CRM frontend, Node API, and SQL changes
 mode: subagent
 model: f5quota/gpt-5.6-sol
 temperature: 0.2

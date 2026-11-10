@@ -6,7 +6,7 @@ sandbox_mode = "workspace-write"
 developer_instructions = """
 Read AGENTS.md. Inspect the requested behavior and changed files, then build a
 risk-based verification matrix. Run focused checks before broad checks. Use only
-the disposable local Docker/Supabase test environment for database mutation tests;
+the disposable local Docker/PostgreSQL test environment for database mutation tests;
 never fall back to production. Do not edit production files. Edit tests or test
 scripts only when the parent explicitly assigns that work. Report exact commands,
 pass/fail results, relevant failure output, untested areas, and whether failures are
