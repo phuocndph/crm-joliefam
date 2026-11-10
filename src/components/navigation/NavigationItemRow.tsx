@@ -6,6 +6,16 @@ import { cn } from '@/lib/utils';
 import type { NavigationItem } from '@/lib/navigation-catalog';
 import type { NavigationFavoriteResult } from '@/hooks/useNavigationFavorites';
 import { toast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
+import { localApi } from '@/lib/local-api';
+
+// Requests from Sale waiting for the production manager. Hidden for anyone who cannot review.
+function ProductionPendingBadge() {
+  const { data } = useQuery({ queryKey: ['production-sales-pending-count'], queryFn: () => localApi.productionSalesPendingCount(), refetchInterval: 60_000, staleTime: 30_000, retry: false });
+  const total = data?.can_review ? data.pending + data.adjustment : 0;
+  if (!total) return null;
+  return <span className="ml-auto shrink-0 rounded-full bg-destructive px-1.5 text-xs font-semibold leading-5 text-destructive-foreground" title={`${data!.pending} yêu cầu chờ duyệt, ${data!.adjustment} cần điều chỉnh`} aria-label={`${total} yêu cầu sản xuất đang chờ`}>{total > 99 ? '99+' : total}</span>;
+}
 
 type Props = {
   id?: string;
@@ -44,6 +54,7 @@ export function NavigationItemRow({ id, rowRef, item, active = false, favorite =
     >
       <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span className="truncate">{item.label}</span>
+      {item.id === 'production-orders' && <ProductionPendingBadge />}
     </NavLink>
     {canPin && <Button
       type="button"

@@ -53,12 +53,15 @@ export interface ProductionDispatchData {
 }
 export interface ProductionSourceLine {
   source_line_key:string;source_line_index:number;product_id:string|null;product_sku:string;product_name:string;ordered_quantity:number;color:unknown;size:unknown;dimensions:unknown;
+  /** Catalog name of the matched product; product_name is the sold line name. */
+  catalog_product_name?:string|null;name_mismatch?:boolean;
   /** Canonical product-fulfillment projection. It never exposes product profiles or classification snapshots. */
   sewing_selection_allowed?:boolean;sewing_selection_reason?:string|null;
   submitted_quantity?:DispatchQuantity;remaining_quantity?:DispatchQuantity;direct_remaining_quantity?:DispatchQuantity;
   fulfillment_route?:'SEW'|'PURCHASE'|'UNCLASSIFIED';fulfillment_status?:'CONFIRMED'|'UNCLASSIFIED'|'REVIEW';fulfillment_reason?:string;fulfillment_requires_split?:boolean;fulfillment_revision?:number;
 }
-export interface ProductionSourceOrder {id:string;order_number:string|null;display_order_number:string|null;status:string;delivery_date:string|null;updated_at:string;items:ProductionSourceLine[];source_validation_error?:string|null}
+export interface ProductionSourceOrder {id:string;order_number:string|null;display_order_number:string|null;status:string;delivery_date:string|null;updated_at:string;created_at?:string|null;customer_name?:string|null;customer_phone?:string|null;items:ProductionSourceLine[];source_validation_error?:string|null}
+export interface ProductionSewingSuggestion {product_id:string;dimensions:string|null;piece_rate_code:string;used_at:string}
 export interface ProductionSalesRequestLine extends ProductionSourceLine {purchase_fulfillment_plan_id?:string|null;id:string;request_id:string;requested_quantity:DispatchQuantity;allocated_quantity:DispatchQuantity;source_line_snapshot:Record<string,unknown>}
 export interface ProductionSalesRequest {id:string;order_id:string;order_number:string|null;display_order_number:string|null;status:string;due_date:string|null;priority:string;notes:string|null;submitted_by:string;submitted_at:string;review_reason:string|null;source_changed:boolean;source_validation_error?:string|null;expected_source_hash?:string|null;requested_quantity:DispatchQuantity;allocated_quantity:DispatchQuantity;lines:ProductionSalesRequestLine[]}
 export interface PurchaseFulfillmentPlan {id:string;request_line_id:string;product_id:string;product_name:string;planned_quantity:DispatchQuantity;inventory_item_id:string;inventory_item_name:string;warehouse_id:string;warehouse_name:string;base_unit:string;status:'ACTIVE'|'RELEASED';physical_quantity:DispatchQuantity;reserved_quantity:DispatchQuantity;needed_quantity:DispatchQuantity;received_quantity:DispatchQuantity;available_quantity:DispatchQuantity;held_quantity:DispatchQuantity;shortage_quantity:DispatchQuantity;shortage_id:string|null;source_changed:boolean;reconciliation_required:boolean;source_validation_error:string|null}
