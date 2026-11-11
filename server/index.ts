@@ -5461,7 +5461,7 @@ app.post("/api/fabrics/usage/batch", async (req, res) => {
           id,order_id,order_number,order_group,order_type,fabric_variant_id,warehouse_id,
           quantity_used,unit,usage_date,notes,customer_name,customer_code,fabric_width,
           manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at
-        ) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,'m',coalesce($8::timestamptz,now()),$9,$10,$11,$12,'local-admin','local-tenant',false,now(),now(),now())
+        ) values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,'m',coalesce($8::timestamptz,now()),$9,$10,$11,$12,$13,'local-tenant',false,now(),now(),now())
         returning id`,
         [
           orderId,
@@ -5476,6 +5476,7 @@ app.post("/api/fabrics/usage/batch", async (req, res) => {
           body.customer_name || null,
           body.customer_code || null,
           body.fabric_width || null,
+          fabricActor(req),
         ],
       );
       const usageId = String(usageResult.rows[0].id);
@@ -5485,7 +5486,7 @@ app.post("/api/fabrics/usage/batch", async (req, res) => {
         insert into local_fabric_transactions(
           id,fabric_variant_id,warehouse_id,transaction_type,quantity,packages_count,unit_price,total_amount,
           reference_number,notes,transaction_date,fabric_usage_id,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at
-        ) values(gen_random_uuid()::text,$1,$2,'outbound',$3,0,null,null,$4,$5,coalesce($6::timestamptz,now()),$7,'local-admin','local-tenant',false,now(),now(),now())`,
+        ) values(gen_random_uuid()::text,$1,$2,'outbound',$3,0,null,null,$4,$5,coalesce($6::timestamptz,now()),$7,$8,'local-tenant',false,now(),now(),now())`,
         [
           item.fabric_variant_id,
           warehouseId,
@@ -5494,6 +5495,7 @@ app.post("/api/fabrics/usage/batch", async (req, res) => {
           body.notes || `Xuất vải cho đơn hàng ${orderNumber}`,
           body.usage_date || null,
           usageId,
+          fabricActor(req),
         ],
       );
       await client.query(
@@ -5517,6 +5519,31 @@ app.post("/api/fabrics/usage/batch", async (req, res) => {
     client.release();
   }
 });
+
+// Phieu xuat cu (thoi Supabase) chua gan fabric_usage_id: tim giao dich xuat khop de gan lai,
+// khong thay thi ghi bu de thay doi so cai luon bang thay doi ton.
+async function linkLegacyUsageTransaction(
+  client: Pick<PoolClient, "query">,
+  usage: Record<string, unknown>,
+) {
+  const linked = await client.query(
+    "select id from local_fabric_transactions where fabric_usage_id=$1 for update",
+    [usage.id],
+  );
+  if (linked.rows[0]) return true;
+  const candidate = await client.query(
+    `select id from local_fabric_transactions where fabric_usage_id is null and transaction_type='outbound'
+     and fabric_variant_id=$1 and warehouse_id=$2 and abs(quantity+$3)<0.0001 and coalesce(reference_number,'')=coalesce($4,'')
+     order by transaction_date nulls last,id limit 1 for update`,
+    [usage.fabric_variant_id, usage.warehouse_id, Number(usage.quantity_used || 0), usage.order_number ?? null],
+  );
+  if (!candidate.rows[0]) return false;
+  await client.query(
+    "update local_fabric_transactions set fabric_usage_id=$2,local_modified_at=now(),updated_at=now() where id=$1",
+    [candidate.rows[0].id, usage.id],
+  );
+  return true;
+}
 
 app.patch("/api/fabrics/usage/:id", async (req, res) => {
   const client = await pool.connect();
@@ -5553,6 +5580,7 @@ app.patch("/api/fabrics/usage/:id", async (req, res) => {
     )
       throw new Error("Nhóm đơn hàng không hợp lệ.");
     await assertLegacyFabricVariantsWritable(client, [oldVariant, newVariant]);
+    const hasLinkedTransaction = await linkLegacyUsageTransaction(client, oldUsage);
 
     const keys = [
       ...new Set([
@@ -5639,6 +5667,29 @@ app.patch("/api/fabrics/usage/:id", async (req, res) => {
         body.usage_date ?? null,
       ],
     );
+    if (!hasLinkedTransaction) {
+      const actor = fabricActor(req);
+      await insertFabricTransaction(client, {
+        variantId: oldVariant,
+        warehouseId: oldWarehouse,
+        type: "adjustment",
+        quantity: oldQuantity,
+        reference: String(oldUsage.order_number || "") || null,
+        notes: `Hoàn số cũ ${oldQuantity} m khi sửa phiếu xuất cũ chưa có giao dịch gắn kèm`,
+        actor,
+      });
+      await insertFabricTransaction(client, {
+        variantId: newVariant,
+        warehouseId: newWarehouse,
+        type: "outbound",
+        quantity: -newQuantity,
+        reference: String(body.order_number ?? oldUsage.order_number ?? "") || null,
+        notes: body.notes ?? oldUsage.notes ?? null,
+        date: body.usage_date ?? (oldUsage.usage_date ? new Date(String(oldUsage.usage_date)).toISOString() : null),
+        usageId: String(req.params.id),
+        actor,
+      });
+    }
     await client.query("COMMIT");
     res.json(updated.rows[0]);
   } catch (error) {
@@ -5654,12 +5705,23 @@ app.delete("/api/fabrics/usage/:id", async (req, res) => {
   try {
     await client.query("BEGIN");
     const usageResult = await client.query(
-      "select fabric_variant_id,warehouse_id,quantity_used from local_fabric_usage where id=$1 for update",
+      "select id,fabric_variant_id,warehouse_id,quantity_used,order_number from local_fabric_usage where id=$1 for update",
       [req.params.id],
     );
     const usage = usageResult.rows[0];
     if (!usage) throw new Error("Không tìm thấy ghi nhận sử dụng vải.");
     await assertLegacyFabricVariantsWritable(client, [usage.fabric_variant_id]);
+    const hasLinkedTransaction = await linkLegacyUsageTransaction(client, usage);
+    if (!hasLinkedTransaction)
+      await insertFabricTransaction(client, {
+        variantId: String(usage.fabric_variant_id),
+        warehouseId: String(usage.warehouse_id),
+        type: "adjustment",
+        quantity: Number(usage.quantity_used || 0),
+        reference: String(usage.order_number || "") || null,
+        notes: `Hoàn ${Number(usage.quantity_used || 0)} m khi xoá phiếu xuất cũ chưa có giao dịch gắn kèm`,
+        actor: fabricActor(req),
+      });
     const inventoryResult = await client.query(
       "select id from local_fabric_inventory where fabric_variant_id=$1 and warehouse_id=$2 for update",
       [usage.fabric_variant_id, usage.warehouse_id],
@@ -5773,26 +5835,204 @@ app.post("/api/fabrics/widths", async (req, res) => {
   }
 });
 
+// --- So vai: moi thay doi ton do may chu tinh, ghi cung giao dich trong 1 buoc ---
+const FABRIC_TRANSACTION_SIGN: Record<string, number> = {
+  inbound: 1,
+  transfer_in: 1,
+  outbound: -1,
+  transfer_out: -1,
+  adjustment: 0,
+};
+const FABRIC_STOCK_EPSILON = 0.0001;
+const fabricActor = (req: express.Request) => {
+  try {
+    return localActor(req);
+  } catch {
+    return "local-admin";
+  }
+};
+const signedFabricQuantity = (type: string, raw: unknown) => {
+  if (!(type in FABRIC_TRANSACTION_SIGN))
+    throw Object.assign(new Error("Loại giao dịch vải không hợp lệ."), { status: 400 });
+  const value = Number(raw);
+  if (!Number.isFinite(value))
+    throw Object.assign(new Error("Số lượng vải không hợp lệ."), { status: 400 });
+  const sign = FABRIC_TRANSACTION_SIGN[type];
+  return sign === 0 ? value : sign * Math.abs(value);
+};
+const fabricKey = (variantId: string, warehouseId: string) =>
+  `${variantId}::${warehouseId}`;
+
+// Khoa (va tao neu chua co) dong ton theo thu tu co dinh de tranh deadlock.
+async function lockFabricInventoryRows(
+  client: Pick<PoolClient, "query">,
+  keys: Array<{ variantId: string; warehouseId: string }>,
+) {
+  const unique = [
+    ...new Map(keys.map((k) => [fabricKey(k.variantId, k.warehouseId), k])).values(),
+  ].sort((a, b) =>
+    fabricKey(a.variantId, a.warehouseId).localeCompare(fabricKey(b.variantId, b.warehouseId)),
+  );
+  const locked = new Map<string, { current_stock: number; packages_count: number }>();
+  for (const key of unique) {
+    if (!key.variantId || !key.warehouseId)
+      throw Object.assign(new Error("Vải và kho là bắt buộc."), { status: 400 });
+    await client.query(
+      `insert into local_fabric_inventory(id,fabric_variant_id,warehouse_id,current_stock,packages_count,reserved_stock,minimum_stock,maximum_stock,tenant_id,is_snapshot_record,local_modified_at,last_updated,created_at,updated_at)
+      values(gen_random_uuid()::text,$1,$2,0,0,0,0,0,'local-tenant',false,now(),now(),now(),now())
+      on conflict (fabric_variant_id,warehouse_id) do nothing`,
+      [key.variantId, key.warehouseId],
+    );
+    const row = (
+      await client.query(
+        "select current_stock,packages_count from local_fabric_inventory where fabric_variant_id=$1 and warehouse_id=$2 for update",
+        [key.variantId, key.warehouseId],
+      )
+    ).rows[0];
+    locked.set(fabricKey(key.variantId, key.warehouseId), {
+      current_stock: Number(row?.current_stock || 0),
+      packages_count: Number(row?.packages_count || 0),
+    });
+  }
+  return locked;
+}
+
+async function applyFabricStockDelta(
+  client: Pick<PoolClient, "query">,
+  locked: Map<string, { current_stock: number; packages_count: number }>,
+  variantId: string,
+  warehouseId: string,
+  delta: number,
+  packagesDelta = 0,
+) {
+  const key = fabricKey(variantId, warehouseId);
+  const current = locked.get(key);
+  if (!current) throw new Error("Dòng tồn vải chưa được khoá trước khi ghi.");
+  const next = current.current_stock + delta;
+  if (delta < 0 && next < -FABRIC_STOCK_EPSILON)
+    throw Object.assign(
+      new Error(
+        `Tồn kho không đủ. Còn ${Number(current.current_stock.toFixed(4))} m, cần ${Number((-delta).toFixed(4))} m.`,
+      ),
+      { status: 409 },
+    );
+  await client.query(
+    "update local_fabric_inventory set current_stock=current_stock+$1,packages_count=greatest(0,coalesce(packages_count,0)+$2),last_updated=now(),local_modified_at=now(),updated_at=now() where fabric_variant_id=$3 and warehouse_id=$4",
+    [delta, packagesDelta, variantId, warehouseId],
+  );
+  locked.set(key, {
+    current_stock: next,
+    packages_count: Math.max(0, current.packages_count + packagesDelta),
+  });
+}
+
+async function insertFabricTransaction(
+  client: Pick<PoolClient, "query">,
+  row: {
+    variantId: string;
+    warehouseId: string;
+    type: string;
+    quantity: number;
+    packages?: number;
+    unitPrice?: number | null;
+    totalAmount?: number | null;
+    reference?: string | null;
+    supplier?: string | null;
+    recipient?: string | null;
+    notes?: string | null;
+    date?: string | null;
+    usageId?: string | null;
+    actor: string;
+  },
+) {
+  const { rows } = await client.query(
+    `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,packages_count,unit_price,total_amount,reference_number,supplier_name,recipient_name,notes,transaction_date,fabric_usage_id,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at)
+    values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12::timestamptz,now()),$13,$14,'local-tenant',false,now(),now(),now()) returning *`,
+    [
+      row.variantId,
+      row.warehouseId,
+      row.type,
+      row.quantity,
+      row.packages || 0,
+      row.unitPrice ?? null,
+      row.totalAmount ?? null,
+      row.reference || null,
+      row.supplier || null,
+      row.recipient || null,
+      row.notes || null,
+      row.date || null,
+      row.usageId || null,
+      row.actor,
+    ],
+  );
+  return rows[0];
+}
+
+// Chi tao dong ton moi hoac sua muc toi thieu/toi da. So ton chi doi qua giao dich.
 app.post("/api/fabrics/inventory", async (req, res) => {
   try {
+    const body = req.body || {};
+    const variantId = String(body.fabric_variant_id || "").trim();
+    const warehouseId = String(body.warehouse_id || "").trim();
+    if (!variantId || !warehouseId)
+      throw Object.assign(new Error("Vải và kho là bắt buộc."), { status: 400 });
+    const actor = fabricActor(req);
     const row = await withLocalTransaction(async (client) => {
-      await assertLegacyFabricVariantsWritable(client, [req.body.fabric_variant_id]);
-      const { rows } = await client.query(
-      `insert into local_fabric_inventory(id,fabric_variant_id,warehouse_id,current_stock,packages_count,reserved_stock,minimum_stock,maximum_stock,tenant_id,is_snapshot_record,local_modified_at,last_updated,created_at,updated_at)
-      values(coalesce($1,gen_random_uuid()::text),$2,$3,$4,$5,$6,$7,$8,'local-tenant',false,now(),now(),now(),now())
-      on conflict (fabric_variant_id,warehouse_id) do update set current_stock=excluded.current_stock,packages_count=excluded.packages_count,reserved_stock=excluded.reserved_stock,minimum_stock=excluded.minimum_stock,maximum_stock=excluded.maximum_stock,local_modified_at=now(),last_updated=now(),updated_at=now() returning *`,
-      [
-        req.body.id || null,
-        req.body.fabric_variant_id,
-        req.body.warehouse_id,
-        Number(req.body.current_stock || 0),
-        Number(req.body.packages_count || 0),
-        Number(req.body.reserved_stock || 0),
-        Number(req.body.minimum_stock || 0),
-        Number(req.body.maximum_stock || 0),
-      ],
+      await assertLegacyFabricVariantsWritable(client, [variantId]);
+      const existing = (
+        await client.query(
+          "select * from local_fabric_inventory where fabric_variant_id=$1 and warehouse_id=$2 for update",
+          [variantId, warehouseId],
+        )
+      ).rows[0];
+      if (existing) {
+        if (
+          body.current_stock !== undefined &&
+          Math.abs(Number(body.current_stock) - Number(existing.current_stock || 0)) > FABRIC_STOCK_EPSILON
+        )
+          throw Object.assign(
+            new Error(
+              "Không sửa thẳng số tồn được nữa. Số tồn chỉ thay đổi qua phiếu nhập, xuất, chuyển kho hoặc điều chỉnh. Vui lòng tải lại trang để dùng màn hình mới.",
+            ),
+            { status: 409 },
+          );
+        const { rows } = await client.query(
+          "update local_fabric_inventory set minimum_stock=coalesce($3,minimum_stock),maximum_stock=coalesce($4,maximum_stock),local_modified_at=now(),updated_at=now() where fabric_variant_id=$1 and warehouse_id=$2 returning *",
+          [
+            variantId,
+            warehouseId,
+            body.minimum_stock === undefined ? null : Number(body.minimum_stock),
+            body.maximum_stock === undefined ? null : Number(body.maximum_stock),
+          ],
+        );
+        return rows[0];
+      }
+      const opening = Number(body.current_stock || 0);
+      if (!Number.isFinite(opening) || opening < 0)
+        throw Object.assign(new Error("Tồn đầu kỳ không hợp lệ."), { status: 400 });
+      const locked = await lockFabricInventoryRows(client, [{ variantId, warehouseId }]);
+      await client.query(
+        "update local_fabric_inventory set minimum_stock=$3,maximum_stock=$4 where fabric_variant_id=$1 and warehouse_id=$2",
+        [variantId, warehouseId, Number(body.minimum_stock || 0), Number(body.maximum_stock || 0)],
       );
-      return rows[0];
+      if (opening > 0) {
+        await insertFabricTransaction(client, {
+          variantId,
+          warehouseId,
+          type: "adjustment",
+          quantity: opening,
+          packages: Number(body.packages_count || 0),
+          notes: "Tồn đầu kỳ khi tạo dòng tồn",
+          actor,
+        });
+        await applyFabricStockDelta(client, locked, variantId, warehouseId, opening, Number(body.packages_count || 0));
+      }
+      return (
+        await client.query(
+          "select * from local_fabric_inventory where fabric_variant_id=$1 and warehouse_id=$2",
+          [variantId, warehouseId],
+        )
+      ).rows[0];
     });
     res.json(row);
   } catch (error) {
@@ -5800,38 +6040,44 @@ app.post("/api/fabrics/inventory", async (req, res) => {
   }
 });
 
+// Ghi giao dich va doi ton trong cung 1 buoc. Dau so luong theo loai giao dich.
 app.post("/api/fabrics/transactions", async (req, res) => {
   try {
-    const quantity = Number(req.body?.quantity || 0);
-    if (
-      !req.body?.fabric_variant_id ||
-      !req.body?.warehouse_id ||
-      !Number.isFinite(quantity)
-    )
-      throw new Error("Vải, kho và số lượng là bắt buộc.");
+    const body = req.body || {};
+    const variantId = String(body.fabric_variant_id || "").trim();
+    const warehouseId = String(body.warehouse_id || "").trim();
+    const type = String(body.transaction_type || "adjustment");
+    if (!variantId || !warehouseId)
+      throw Object.assign(new Error("Vải, kho và số lượng là bắt buộc."), { status: 400 });
+    const quantity = signedFabricQuantity(type, body.quantity);
+    if (Math.abs(quantity) < FABRIC_STOCK_EPSILON && !Number(body.packages_count || 0))
+      throw Object.assign(new Error("Số lượng phải khác 0."), { status: 400 });
+    if (type === "adjustment" && !String(body.notes || "").trim())
+      throw Object.assign(new Error("Phiếu điều chỉnh phải ghi lý do."), { status: 400 });
+    const packagesRaw = Math.abs(Number(body.packages_count || 0));
+    const packages = FABRIC_TRANSACTION_SIGN[type] === -1 ? -packagesRaw : type === "adjustment" ? Number(body.packages_count || 0) : packagesRaw;
+    const unitPrice = Number(body.unit_price || 0);
+    const actor = fabricActor(req);
     const row = await withLocalTransaction(async (client) => {
-      await assertLegacyFabricVariantsWritable(client, [req.body.fabric_variant_id]);
-      const { rows } = await client.query(
-      `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,packages_count,unit_price,total_amount,reference_number,supplier_name,recipient_name,notes,transaction_date,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at)
-      values(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce($12::timestamptz,now()),'local-tenant',false,now(),now(),now()) returning *`,
-      [
-        req.body.fabric_variant_id,
-        req.body.warehouse_id,
-        req.body.transaction_type || "adjustment",
+      await assertLegacyFabricVariantsWritable(client, [variantId]);
+      const locked = await lockFabricInventoryRows(client, [{ variantId, warehouseId }]);
+      const inserted = await insertFabricTransaction(client, {
+        variantId,
+        warehouseId,
+        type,
         quantity,
-        Number(req.body.packages_count || 0),
-        Number(req.body.unit_price || 0),
-        Number(
-          req.body.total_amount || quantity * Number(req.body.unit_price || 0),
-        ),
-        req.body.reference_number || null,
-        req.body.supplier_name || null,
-        req.body.recipient_name || null,
-        req.body.notes || null,
-        req.body.transaction_date || null,
-      ],
-      );
-      return rows[0];
+        packages,
+        unitPrice,
+        totalAmount: Number(body.total_amount || Math.abs(quantity) * unitPrice),
+        reference: body.reference_number,
+        supplier: body.supplier_name,
+        recipient: body.recipient_name,
+        notes: body.notes,
+        date: body.transaction_date,
+        actor,
+      });
+      await applyFabricStockDelta(client, locked, variantId, warehouseId, quantity, packages);
+      return inserted;
     });
     res.status(201).json(row);
   } catch (error) {
@@ -5839,49 +6085,130 @@ app.post("/api/fabrics/transactions", async (req, res) => {
   }
 });
 
+// Sua giao dich: may chu tu tinh chenh lech va doi ton cung luc.
 app.patch("/api/fabrics/transactions/:id", async (req, res) => {
   try {
+    const body = req.body || {};
     const row = await withLocalTransaction(async (client) => {
-      const current = (await client.query("select * from local_fabric_transactions where id=$1 for update", [req.params.id])).rows[0];
+      const current = (
+        await client.query("select * from local_fabric_transactions where id=$1 for update", [req.params.id])
+      ).rows[0];
       if (!current) return null;
-      await assertLegacyFabricVariantsWritable(client, [current.fabric_variant_id, req.body.fabric_variant_id]);
+      if (current.fabric_usage_id)
+        throw Object.assign(
+          new Error("Giao dịch này thuộc phiếu xuất vải cho đơn. Hãy sửa ở màn Xuất vải cho đơn để hai sổ khớp nhau."),
+          { status: 409 },
+        );
+      await assertLegacyFabricVariantsWritable(client, [current.fabric_variant_id]);
+      const type = String(current.transaction_type);
+      const oldQuantity = Number(current.quantity || 0);
+      const newQuantity =
+        body.quantity === undefined || body.quantity === null
+          ? oldQuantity
+          : signedFabricQuantity(type, body.quantity);
+      const oldPackages = Number(current.packages_count || 0);
+      const newPackages =
+        body.packages_count === undefined || body.packages_count === null
+          ? oldPackages
+          : FABRIC_TRANSACTION_SIGN[type] === -1
+            ? -Math.abs(Number(body.packages_count))
+            : type === "adjustment"
+              ? Number(body.packages_count)
+              : Math.abs(Number(body.packages_count));
+      const locked = await lockFabricInventoryRows(client, [
+        { variantId: String(current.fabric_variant_id), warehouseId: String(current.warehouse_id) },
+      ]);
+      await applyFabricStockDelta(
+        client,
+        locked,
+        String(current.fabric_variant_id),
+        String(current.warehouse_id),
+        newQuantity - oldQuantity,
+        newPackages - oldPackages,
+      );
+      const unitPrice = body.unit_price ?? current.unit_price;
       const { rows } = await client.query(
-      "update local_fabric_transactions set quantity=coalesce($2,quantity),unit_price=coalesce($3,unit_price),total_amount=coalesce($4,total_amount),notes=coalesce($5,notes),local_modified_at=now(),updated_at=now() where id=$1 returning *",
-      [
-        req.params.id,
-        req.body.quantity ?? null,
-        req.body.unit_price ?? null,
-        req.body.total_amount ?? null,
-        req.body.notes ?? null,
-      ],
+        "update local_fabric_transactions set quantity=$2,packages_count=$3,unit_price=$4,total_amount=$5,notes=coalesce($6,notes),supplier_name=coalesce($7,supplier_name),local_modified_at=now(),updated_at=now() where id=$1 returning *",
+        [
+          req.params.id,
+          newQuantity,
+          newPackages,
+          unitPrice,
+          body.total_amount ?? (unitPrice === null || unitPrice === undefined ? current.total_amount : Math.abs(newQuantity) * Number(unitPrice || 0)),
+          body.notes ?? null,
+          body.supplier_name ?? null,
+        ],
       );
       return rows[0];
     });
-    if (!row)
-      return res.status(404).json({ message: "Không tìm thấy giao dịch vải." });
+    if (!row) return res.status(404).json({ message: "Không tìm thấy giao dịch vải." });
     res.json(row);
   } catch (error) {
     sendError(res, error);
   }
 });
 
+// Chuyen kho: tao phieu, 2 giao dich va doi ton 2 kho trong 1 buoc. Thieu ton thi tu choi, khong cat ve 0.
 app.post("/api/fabrics/transfers", async (req, res) => {
   try {
+    const body = req.body || {};
+    const variantId = String(body.fabric_variant_id || "").trim();
+    const fromId = String(body.from_warehouse_id || "").trim();
+    const toId = String(body.to_warehouse_id || "").trim();
+    const quantity = Number(body.quantity || 0);
+    const packages = Math.abs(Number(body.packages_count || 0));
+    if (!variantId || !fromId || !toId)
+      throw Object.assign(new Error("Vải, kho đi và kho nhận là bắt buộc."), { status: 400 });
+    if (fromId === toId)
+      throw Object.assign(new Error("Kho đi và kho nhận không được trùng nhau."), { status: 400 });
+    if (!Number.isFinite(quantity) || quantity <= 0)
+      throw Object.assign(new Error("Số lượng chuyển phải lớn hơn 0."), { status: 400 });
+    const actor = fabricActor(req);
     const row = await withLocalTransaction(async (client) => {
-      await assertLegacyFabricVariantsWritable(client, [req.body.fabric_variant_id]);
-      const { rows } = await client.query(
-      `insert into local_fabric_transfers(id,fabric_variant_id,from_warehouse_id,to_warehouse_id,quantity,transfer_date,status,notes,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at)
-      values(gen_random_uuid()::text,$1,$2,$3,$4,coalesce($5::timestamptz,now()),'pending',$6,'local-tenant',false,now(),now(),now()) returning *`,
-      [
-        req.body.fabric_variant_id,
-        req.body.from_warehouse_id,
-        req.body.to_warehouse_id,
-        Number(req.body.quantity || 0),
-        req.body.transfer_date || null,
-        req.body.notes || null,
-      ],
+      await assertLegacyFabricVariantsWritable(client, [variantId]);
+      const names = new Map(
+        (
+          await client.query("select id,name from local_warehouses where id=any($1::text[])", [[fromId, toId]])
+        ).rows.map((w) => [String(w.id), String(w.name)]),
       );
-      return rows[0];
+      if (!names.has(fromId) || !names.has(toId))
+        throw Object.assign(new Error("Không tìm thấy kho đi hoặc kho nhận."), { status: 400 });
+      const locked = await lockFabricInventoryRows(client, [
+        { variantId, warehouseId: fromId },
+        { variantId, warehouseId: toId },
+      ]);
+      const note = String(body.notes || "").trim();
+      const { rows } = await client.query(
+        `insert into local_fabric_transfers(id,fabric_variant_id,from_warehouse_id,to_warehouse_id,quantity,transfer_date,status,notes,approved_by,received_by,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at)
+        values(gen_random_uuid()::text,$1,$2,$3,$4,coalesce($5::timestamptz,now()),'completed',$6,$7,$7,$7,'local-tenant',false,now(),now(),now()) returning *`,
+        [variantId, fromId, toId, quantity, body.transfer_date || null, note || null, actor],
+      );
+      const transfer = rows[0];
+      await applyFabricStockDelta(client, locked, variantId, fromId, -quantity, -packages);
+      await applyFabricStockDelta(client, locked, variantId, toId, quantity, packages);
+      await insertFabricTransaction(client, {
+        variantId,
+        warehouseId: fromId,
+        type: "transfer_out",
+        quantity: -quantity,
+        packages: -packages,
+        reference: `CK-${String(transfer.id).slice(0, 8)}`,
+        notes: `Chuyển đến ${names.get(toId)}.${note ? " " + note : ""}`,
+        date: body.transfer_date,
+        actor,
+      });
+      await insertFabricTransaction(client, {
+        variantId,
+        warehouseId: toId,
+        type: "transfer_in",
+        quantity,
+        packages,
+        reference: `CK-${String(transfer.id).slice(0, 8)}`,
+        notes: `Nhận từ ${names.get(fromId)}.${note ? " " + note : ""}`,
+        date: body.transfer_date,
+        actor,
+      });
+      return transfer;
     });
     res.status(201).json(row);
   } catch (error) {
@@ -5889,27 +6216,29 @@ app.post("/api/fabrics/transfers", async (req, res) => {
   }
 });
 
+// Phieu da hoan tat thi khong doi trang thai tu do; muon hoan thi lap phieu chuyen nguoc.
 app.patch("/api/fabrics/transfers/:id/status", async (req, res) => {
   try {
     const row = await withLocalTransaction(async (client) => {
-      const current = (await client.query("select * from local_fabric_transfers where id=$1 for update", [req.params.id])).rows[0];
+      const current = (
+        await client.query("select * from local_fabric_transfers where id=$1 for update", [req.params.id])
+      ).rows[0];
       if (!current) return null;
-      await assertLegacyFabricVariantsWritable(client, [current.fabric_variant_id, req.body.fabric_variant_id]);
+      const next = String(req.body?.status || "");
+      if (!["pending", "in_transit", "completed", "cancelled"].includes(next))
+        throw Object.assign(new Error("Trạng thái phiếu chuyển không hợp lệ."), { status: 400 });
+      if (current.status === "completed" && next !== "completed")
+        throw Object.assign(
+          new Error("Phiếu chuyển đã hoàn tất và đã đổi tồn. Muốn hoàn lại, hãy lập phiếu chuyển ngược."),
+          { status: 409 },
+        );
       const { rows } = await client.query(
-      "update local_fabric_transfers set status=coalesce($2,status),approved_by=coalesce($3,approved_by),received_by=coalesce($4,received_by),updated_at=now(),local_modified_at=now() where id=$1 returning *",
-      [
-        req.params.id,
-        req.body.status || null,
-        req.body.approved_by || null,
-        req.body.received_by || null,
-      ],
+        "update local_fabric_transfers set status=$2,approved_by=coalesce($3,approved_by),received_by=coalesce($4,received_by),updated_at=now(),local_modified_at=now() where id=$1 returning *",
+        [req.params.id, next, req.body?.approved_by || null, req.body?.received_by || null],
       );
       return rows[0];
     });
-    if (!row)
-      return res
-        .status(404)
-        .json({ message: "Không tìm thấy phiếu chuyển vải." });
+    if (!row) return res.status(404).json({ message: "Không tìm thấy phiếu chuyển vải." });
     res.json(row);
   } catch (error) {
     sendError(res, error);

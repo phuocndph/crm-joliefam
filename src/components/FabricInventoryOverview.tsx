@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Package2, ArrowRight, Edit, Trash2 } from "lucide-react";
-import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, useCreateTransaction, useUpdateInventory, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
+import { useFabricInventory, useFabricTypes, useFabricVariants, useWarehouses, useCreateTransaction, useCreateTransfer, useUpdateFabricType, useDeleteFabricType, useCreateFabricVariant } from "@/hooks/useFabrics";
 import { DEFAULT_LOW_STOCK_THRESHOLD_METERS } from '@/lib/fabricStock';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from "@/hooks/use-toast";
@@ -22,7 +22,6 @@ export const FabricInventoryOverview = () => {
   const { data: fabricVariants = [] } = useFabricVariants();
   const { data: warehouses = [] } = useWarehouses();
   const createTransaction = useCreateTransaction();
-  const updateInventory = useUpdateInventory();
   const createTransfer = useCreateTransfer();
   const updateFabricType = useUpdateFabricType();
   const deleteFabricType = useDeleteFabricType();
@@ -284,54 +283,30 @@ export const FabricInventoryOverview = () => {
 
       const hanoiQuantity = newInbound.quantity - newInbound.transfer_to_bacninh;
       
-      // Create inbound transaction for Hanoi
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricVariantId,
-        warehouse_id: hanoiWarehouse.id,
-        transaction_type: 'inbound',
-        quantity: hanoiQuantity,
-        packages_count: newInbound.packages_count,
-        supplier_name: newInbound.supplier_name,
-        notes: newInbound.notes,
-        manager_id: managerId // Add manager_id
-      });
+      // Máy chủ ghi giao dịch và cộng tồn trong cùng một bước, không tự tính tồn trên trình duyệt
+      if (hanoiQuantity > 0 || (newInbound.packages_count || 0) > 0) {
+        await createTransaction.mutateAsync({
+          fabric_variant_id: fabricVariantId,
+          warehouse_id: hanoiWarehouse.id,
+          transaction_type: 'inbound',
+          quantity: hanoiQuantity,
+          packages_count: newInbound.packages_count,
+          supplier_name: newInbound.supplier_name,
+          notes: newInbound.notes,
+          manager_id: managerId
+        });
+      }
 
-      // Update Hanoi inventory
-      const existingHanoiInventory = inventory.find(item => 
-        item.fabric_variant_id === fabricVariantId && item.warehouse_id === hanoiWarehouse.id
-      );
-      const currentHanoiStock = existingHanoiInventory?.current_stock || 0;
-      
-      await updateInventory.mutateAsync({
-        fabric_variant_id: fabricVariantId,
-        warehouse_id: hanoiWarehouse.id,
-        current_stock: currentHanoiStock + hanoiQuantity,
-        packages_count: (existingHanoiInventory?.packages_count || 0) + newInbound.packages_count
-      });
-
-      // If transferring to Bac Ninh
+      // Phần nhập thẳng về Bắc Ninh
       if (newInbound.transfer_to_bacninh > 0 && bacninhWarehouse) {
-        // Create transfer transaction
         await createTransaction.mutateAsync({
           fabric_variant_id: fabricVariantId,
           warehouse_id: bacninhWarehouse.id,
           transaction_type: 'transfer_in',
           quantity: newInbound.transfer_to_bacninh,
-          notes: `Chuyển từ kho Hà Nội`,
-          manager_id: managerId // Add manager_id
-        });
-
-        // Update Bac Ninh inventory
-        const existingBacninhInventory = inventory.find(item => 
-          item.fabric_variant_id === fabricVariantId && item.warehouse_id === bacninhWarehouse.id
-        );
-        const currentBacninhStock = existingBacninhInventory?.current_stock || 0;
-        
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariantId,
-          warehouse_id: bacninhWarehouse.id,
-          current_stock: currentBacninhStock + newInbound.transfer_to_bacninh,
-          packages_count: existingBacninhInventory?.packages_count || 0
+          supplier_name: newInbound.supplier_name,
+          notes: `Nhập thẳng về kho Bắc Ninh (phần chuyển từ lô nhập Hà Nội)${newInbound.notes ? '. ' + newInbound.notes : ''}`,
+          manager_id: managerId
         });
       }
 
@@ -350,7 +325,7 @@ export const FabricInventoryOverview = () => {
       toast({ title: "Thành công", description: "Đã nhập kho và phân bổ vải thành công" });
     } catch (error) {
       console.error('Error creating inbound:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi nhập kho", variant: "destructive" });
+      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Có lỗi xảy ra khi nhập kho", variant: "destructive" });
     }
   };
 
@@ -448,56 +423,14 @@ export const FabricInventoryOverview = () => {
         return;
       }
 
-      // Create transfer record
+      // Máy chủ kiểm tồn, đổi tồn hai kho và ghi 2 giao dịch trong cùng một bước
       await createTransfer.mutateAsync({
         fabric_variant_id: fabricInventoryItem.fabric_variant_id,
         from_warehouse_id: fromWarehouseId,
         to_warehouse_id: toWarehouseId,
         quantity: transferQuantity,
+        packages_count: transferPackagesCount,
         notes: transferNotes
-      });
-
-      // Update source warehouse inventory (decrease)
-      await updateInventory.mutateAsync({
-        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
-        warehouse_id: fromWarehouseId,
-        current_stock: fabricInventoryItem.current_stock - transferQuantity,
-        packages_count: Math.max(0, fabricInventoryItem.packages_count - transferPackagesCount)
-      });
-
-      // Update destination warehouse inventory (increase)
-      const destinationInventory = inventory.find(item => 
-        item.fabric_variant_id === fabricInventoryItem.fabric_variant_id && 
-        item.warehouse_id === toWarehouseId
-      );
-      
-      const currentDestinationStock = destinationInventory?.current_stock || 0;
-      const currentDestinationPackages = destinationInventory?.packages_count || 0;
-
-      await updateInventory.mutateAsync({
-        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
-        warehouse_id: toWarehouseId,
-        current_stock: currentDestinationStock + transferQuantity,
-        packages_count: currentDestinationPackages + transferPackagesCount
-      });
-
-      // Create transfer transactions
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
-        warehouse_id: fromWarehouseId,
-        transaction_type: 'transfer_out',
-        quantity: -transferQuantity, // Negative for outbound
-        packages_count: -transferPackagesCount, // Negative for outbound packages
-        notes: `Chuyển đến ${warehouses.find(w => w.id === toWarehouseId)?.name}. ${transferNotes}`
-      });
-
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricInventoryItem.fabric_variant_id,
-        warehouse_id: toWarehouseId,
-        transaction_type: 'transfer_in',
-        quantity: transferQuantity,
-        packages_count: transferPackagesCount, // Positive for inbound packages
-        notes: `Nhận từ ${warehouses.find(w => w.id === fromWarehouseId)?.name}. ${transferNotes}`
       });
 
       // Force refresh inventory data
@@ -516,7 +449,7 @@ export const FabricInventoryOverview = () => {
       toast({ title: "Thành công", description: "Đã chuyển kho thành công" });
     } catch (error) {
       console.error('Error transferring fabric:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi chuyển kho", variant: "destructive" });
+      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Có lỗi xảy ra khi chuyển kho", variant: "destructive" });
     }
   };
 
