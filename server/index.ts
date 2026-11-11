@@ -5851,6 +5851,17 @@ const fabricActor = (req: express.Request) => {
     return "local-admin";
   }
 };
+const FABRIC_UI_VERSION = 2;
+// Old browser tabs (loaded before the server-side ledger) send several calls per action.
+// Reject them at the first call so nothing is half-written. Machine callers (no Origin) pass.
+const assertCurrentFabricClient = (req: express.Request) => {
+  if (!req.get("origin")) return;
+  if (Number(req.get("x-crm-fabric-ui") || 0) >= FABRIC_UI_VERSION) return;
+  throw Object.assign(
+    new Error("Màn hình sổ vải đã được cập nhật. Vui lòng tải lại trang (F5) rồi làm lại thao tác này. Chưa có gì được ghi."),
+    { status: 409 },
+  );
+};
 const signedFabricQuantity = (type: string, raw: unknown) => {
   if (!(type in FABRIC_TRANSACTION_SIGN))
     throw Object.assign(new Error("Loại giao dịch vải không hợp lệ."), { status: 400 });
@@ -6043,6 +6054,7 @@ app.post("/api/fabrics/inventory", async (req, res) => {
 // Ghi giao dich va doi ton trong cung 1 buoc. Dau so luong theo loai giao dich.
 app.post("/api/fabrics/transactions", async (req, res) => {
   try {
+    assertCurrentFabricClient(req);
     const body = req.body || {};
     const variantId = String(body.fabric_variant_id || "").trim();
     const warehouseId = String(body.warehouse_id || "").trim();
@@ -6088,6 +6100,7 @@ app.post("/api/fabrics/transactions", async (req, res) => {
 // Sua giao dich: may chu tu tinh chenh lech va doi ton cung luc.
 app.patch("/api/fabrics/transactions/:id", async (req, res) => {
   try {
+    assertCurrentFabricClient(req);
     const body = req.body || {};
     const row = await withLocalTransaction(async (client) => {
       const current = (
@@ -6097,6 +6110,15 @@ app.patch("/api/fabrics/transactions/:id", async (req, res) => {
       if (current.fabric_usage_id)
         throw Object.assign(
           new Error("Giao dịch này thuộc phiếu xuất vải cho đơn. Hãy sửa ở màn Xuất vải cho đơn để hai sổ khớp nhau."),
+          { status: 409 },
+        );
+      const reference = String(current.reference_number || "");
+      if (
+        /^CK-[0-9a-f]{8}$/i.test(reference) &&
+        (await client.query("select 1 from local_fabric_transfers where left(id::text,8)=$1 limit 1", [reference.slice(3)])).rows[0]
+      )
+        throw Object.assign(
+          new Error("Giao dịch này thuộc một phiếu chuyển kho. Không sửa riêng một đầu được, hãy lập phiếu chuyển ngược để hai kho luôn khớp nhau."),
           { status: 409 },
         );
       await assertLegacyFabricVariantsWritable(client, [current.fabric_variant_id]);
@@ -6151,6 +6173,7 @@ app.patch("/api/fabrics/transactions/:id", async (req, res) => {
 // Chuyen kho: tao phieu, 2 giao dich va doi ton 2 kho trong 1 buoc. Thieu ton thi tu choi, khong cat ve 0.
 app.post("/api/fabrics/transfers", async (req, res) => {
   try {
+    assertCurrentFabricClient(req);
     const body = req.body || {};
     const variantId = String(body.fabric_variant_id || "").trim();
     const fromId = String(body.from_warehouse_id || "").trim();
@@ -12839,7 +12862,7 @@ app.post("/api/production/fabric-allocations", async (req, res) => {
     const usageId = randomUUID();
     const transactionId = randomUUID();
     await client.query(
-      `insert into local_fabric_usage(id,order_id,order_number,order_group,order_type,fabric_variant_id,warehouse_id,quantity_used,unit,usage_date,notes,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values($1,$2,$3,'unclassified','production',$4,$5,$6,'m',$7,$8,'local-admin','local-tenant',false,now(),now(),now())`,
+      `insert into local_fabric_usage(id,order_id,order_number,order_group,order_type,fabric_variant_id,warehouse_id,quantity_used,unit,usage_date,notes,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values($1,$2,$3,'unclassified','production',$4,$5,$6,'m',$7,$8,$9,'local-tenant',false,now(),now(),now())`,
       [
         usageId,
         req.body.production_order_id,
@@ -12849,10 +12872,11 @@ app.post("/api/production/fabric-allocations", async (req, res) => {
         quantity,
         req.body.usage_date || new Date().toISOString(),
         req.body.notes || null,
+        fabricActor(req),
       ],
     );
     await client.query(
-      `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,reference_number,notes,transaction_date,fabric_usage_id,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values($1,$2,$3,'outbound',$4,$5,$6,$7,$8,'local-admin','local-tenant',false,now(),now(),now())`,
+      `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,reference_number,notes,transaction_date,fabric_usage_id,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values($1,$2,$3,'outbound',$4,$5,$6,$7,$8,$9,'local-tenant',false,now(),now(),now())`,
       [
         transactionId,
         req.body.fabric_variant_id,
@@ -12862,6 +12886,7 @@ app.post("/api/production/fabric-allocations", async (req, res) => {
         req.body.notes || null,
         req.body.usage_date || new Date().toISOString(),
         usageId,
+        fabricActor(req),
       ],
     );
     await client.query(
@@ -12925,13 +12950,14 @@ app.post("/api/production/fabric-allocations/:id/adjust", async (req, res) => {
         [quantity, allocation.fabric_variant_id, allocation.warehouse_id],
       );
       await client.query(
-        `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,reference_number,notes,transaction_date,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2,'inbound',$3,$4,$5,now(),'local-admin','local-tenant',false,now(),now(),now())`,
+        `insert into local_fabric_transactions(id,fabric_variant_id,warehouse_id,transaction_type,quantity,reference_number,notes,transaction_date,manager_id,tenant_id,is_snapshot_record,local_modified_at,created_at,updated_at) values(gen_random_uuid()::text,$1,$2,'inbound',$3,$4,$5,now(),$6,'local-tenant',false,now(),now(),now())`,
         [
           allocation.fabric_variant_id,
           allocation.warehouse_id,
           quantity,
           `RETURN-${req.params.id}`,
           req.body.reason || "Trả vải từ sản xuất",
+          fabricActor(req),
         ],
       );
     }

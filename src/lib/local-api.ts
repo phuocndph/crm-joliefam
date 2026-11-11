@@ -255,7 +255,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const response = await localFetch(`${localApiUrl()}${path}${query ? `?${query}` : ""}`, {
     signal:options.signal,
     method: options.method ?? "GET",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-crm-fabric-ui": "2" },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   },true,options.authGuard);
   const payload = await response.json().catch(() => ({}));
