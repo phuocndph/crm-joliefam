@@ -1,14 +1,3 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# CRM noi bo: khong cho cong cu tim kiem lap chi muc.
 User-agent: *
-Allow: /
+Disallow: /

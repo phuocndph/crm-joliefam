@@ -8,42 +8,59 @@ change over a broad rewrite.
 
 ## Stack And Layout
 
+The active line is branch `local-vps-20261014` (production at crm.joliefam.vn).
+`main` is the frozen Supabase-era history and must not receive new work.
+
 - React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui.
 - TanStack Query owns server-state caching.
-- Supabase/PostgreSQL owns authentication, authorization, data integrity, and
-  transactional business operations.
+- The Node.js API in `server/` (Express, entry `server/index.ts`) with PostgreSQL 16
+  owns authentication (local password sessions), authorization
+  (`server/module-permissions.ts`), data integrity, and transactional business
+  operations. `server/index.ts` is very large: search it, never read it whole.
+- `server/db/migrations/` is the append-only, numbered SQL history. The API applies
+  it at startup through `server/db/bootstrap.ts` and refuses to start when the
+  checksum of an applied file changes.
+- `server/integration-*.ts` and `server/zcrm-*.ts` serve the Agent/MCP API and the
+  ZCRM bridge. See `docs/integration-business-tools.md`.
 - `src/pages/` contains route-level screens.
 - `src/components/` contains domain and reusable UI components.
 - `src/hooks/` contains query and application hooks.
 - `src/lib/` contains domain APIs and calculations.
-- `src/integrations/supabase/` contains the generated client and database types.
-- `supabase/migrations/` is append-only database history.
-- `supabase/functions/` contains Edge Functions.
-- `supabase/tests/` and `scripts/test-*.ps1` contain isolated database tests.
-- `docs/cost-management/` records the current inventory, BOM, production, and
-  costing architecture. Read the relevant plan and report before changing those
-  domains.
+- `src/integrations/supabase/` keeps the `supabase` import name for compatibility.
+  With `VITE_BACKEND_MODE=local` it is a shim (`local-query-compat.ts`) that calls
+  the Node API; no Supabase client is created.
+- `supabase/` is legacy history and source-sync code. Read it for reference only.
+- `deploy/` holds the Docker build, compose, Caddy, backup, and restore files.
+- `scripts/` holds build scripts, isolated tests (`test-*.mjs`), and Windows
+  launchers and suites (`*.ps1`).
+- `docs/README.md` indexes the documents. Open only the files for the domain you
+  touch; `docs/cost-management/` records inventory, BOM, production, and costing
+  architecture and must be read before changing those domains.
 
 ## Non-Negotiable Rules
 
 1. Never read, print, commit, upload, or expose `.env` values or credentials.
-2. Never run `supabase db push`, remote migrations, remote seeds, or destructive
-   SQL unless the user explicitly approves the exact production operation.
+2. Never run `supabase db push`, remote migrations, remote seeds, Supabase sync, or
+   destructive SQL unless the user explicitly approves the exact production
+   operation.
 3. Never edit an existing migration that may already have been applied. Add a new
    migration for every database change.
 4. Do not create a second source of truth for products, customers, orders,
    inventory, costing, or production data.
 5. Financial and inventory mutations must be atomic, idempotent where retries are
    possible, and enforced server-side. Do not rely on UI validation alone.
-6. Preserve tenant checks, RLS, permissions, audit events, immutable approved
-   versions, and immutable released production snapshots.
+6. Preserve tenant checks, server-side permission checks (and RLS where it
+   exists), audit events, immutable approved versions, and immutable released
+   production snapshots.
 7. Inventory truth comes from the movement ledger. Do not update derived balances
    directly or hand-enter actual consumption.
 8. Use database `numeric` semantics for money and quantities. Avoid floating-point
    equality for business calculations.
 9. Keep Vietnamese labels and messages consistent with the surrounding UI.
 10. Do not push, publish, deploy, or contact external services unless explicitly
-    requested.
+    requested. When a push is requested, use a separate branch and a pull request
+    into `local-vps-20261014`. A production deploy always needs the owner's
+    confirmation plus a database and image backup first.
 
 ## Agent Ownership
 
@@ -81,18 +98,25 @@ production edits to `crm_implementer` and does not edit production files itself.
 
 Run the smallest relevant checks first, then broaden according to risk:
 
-```powershell
+```sh
+npm run typecheck:server
 npx tsc --noEmit -p tsconfig.app.json
-npm run lint
-npm run build
-npm run test:cost-management
-npm run test:inventory
-npm run test:bom-cutting
-npm run test:production
+npx eslint <changed files>
+npm run test:vps
+npm run build:vps
+npm run build:server
 ```
 
-Database suites require the isolated local Docker environment. A failed or missing
-Docker runtime is not permission to use the production Supabase project.
+Then run the suite for the domain you changed (`npm run` lists them). Node suites
+(`node scripts/test-*.mjs`) run on any OS; names ending in `-isolated` need a
+disposable Docker/PostgreSQL database. Suites that call `powershell` only run on
+the Windows development machine: report them as not run instead of skipping
+silently. `npm run lint` on the whole repository still reports several hundred
+pre-existing errors (mostly `no-explicit-any`), so lint the files you changed and
+do not add new errors.
+
+A failed or missing Docker runtime is not permission to use the production
+database or the Supabase project.
 
 ## VPS Web Deploy (mandatory)
 
@@ -111,8 +135,9 @@ image is packaged from a `dist/` built outside Docker:
 
 - The requested behavior is implemented without unrelated refactors.
 - TypeScript and the relevant lint/build/test checks pass.
-- Database changes include RLS, grants, tenant validation, rollback-safe failure,
-  audit behavior, and isolated tests where applicable.
+- Database changes come as a new numbered migration and include permission
+  enforcement, tenant validation, rollback-safe failure, audit behavior, and
+  isolated tests where applicable.
 - Loading, empty, error, permission-denied, mobile, and retry states are considered
   for user-facing changes.
 - No secrets, generated build output, remote mutations, or unapproved deployment
