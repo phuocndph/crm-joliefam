@@ -182,15 +182,15 @@ try{
  for(const [view,viewport]of [['desktop',{width:1440,height:1000}],['mobile',{width:390,height:844}]]){
    const context=await browser.newContext({viewport});const page=await context.newPage();const pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
    await page.goto(origin+'/auth');await page.getByLabel('Email',{exact:true}).fill('admin@fixture.invalid');await page.getByLabel('Mật khẩu',{exact:true}).fill(password);await page.getByRole('button',{name:'Đăng nhập',exact:true}).click();await page.waitForURL(view==='mobile'?'**/menu':'**/dashboard');
-   if(view==='desktop')await page.getByRole('link',{name:/API & kết nối Agent/}).click();
-   else{await page.getByRole('button',{name:'Menu',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:/API.*Agent/}).click();}
+   // Mục menu đã đổi tên thành "Kết nối Agent" và nằm trong nhóm Hệ thống đang thu gọn; mở thẳng trang để test đúng trang này.
+   await page.goto(origin+'/integration-access');
    await page.waitForURL('**/integration-access');await page.getByRole('heading',{name:'API & kết nối Agent',exact:true}).waitFor();
-   if(view==='mobile'){await page.goto(origin+'/menu');await page.getByText('API & Agent',{exact:true}).click();await page.waitForURL('**/integration-access');}
+
    await page.getByRole('textbox',{name:'Tên kết nối',exact:true}).fill('UI QA '+view);await page.getByRole('textbox',{name:'Mô tả kết nối',exact:true}).fill('Actual independent browser test');await page.getByRole('button',{name:'Tạo kết nối',exact:true}).click();await page.getByRole('heading',{name:'UI QA '+view,exact:true}).waitFor();
-   await page.getByText('Sản phẩm · Chỉ xem',{exact:true}).click();await page.getByRole('textbox',{name:'Tìm Sản phẩm',exact:true}).fill('QA-ALLOW');await page.getByText('QA-ALLOW · Sản phẩm được cấp',{exact:true}).click();
+   await page.getByText('Sản phẩm · Chỉ xem',{exact:true}).click();await page.getByRole('radio',{name:'Chọn từng hồ sơ Sản phẩm',exact:true}).click();await page.getByRole('textbox',{name:'Tìm Sản phẩm',exact:true}).fill('QA-ALLOW');await page.getByText('QA-ALLOW · Sản phẩm được cấp',{exact:true}).click();
    await page.getByRole('textbox',{name:'Lý do thay đổi',exact:true}).fill('Browser scope test');await page.getByRole('button',{name:'Lưu quyền và phạm vi',exact:true}).click();await page.getByText('Đã lưu quyền truy cập',{exact:true}).waitFor();
    await page.getByRole('button',{name:'Hermes QA',exact:true}).click();await page.getByRole('heading',{name:'Hermes QA',exact:true}).waitFor();await page.getByRole('button',{name:'UI QA '+view,exact:true}).click();await page.getByText('QA-ALLOW · Sản phẩm được cấp',{exact:true}).waitFor();
-   await page.getByText('Khách hàng · Chỉ xem',{exact:true}).click();await page.getByRole('textbox',{name:'Tìm Khách hàng',exact:true}).fill('QA-C1');await page.getByText('QA-C1 · Khách được cấp',{exact:true}).click();
+   await page.getByText('Khách hàng · Chỉ xem',{exact:true}).click();await page.getByRole('radio',{name:'Chọn từng hồ sơ Khách hàng',exact:true}).click();await page.getByRole('textbox',{name:'Tìm Khách hàng',exact:true}).fill('QA-C1');await page.getByText('QA-C1 · Khách được cấp',{exact:true}).click();
    await page.getByRole('tab',{name:'Khóa truy cập',exact:true}).click();await page.getByLabel('Tên khóa',{exact:true}).fill('Browser '+view);await page.getByLabel('Số ngày hiệu lực (1–366)',{exact:true}).fill('1');
    assert.equal(await page.getByRole('tabpanel').getByText('Khách hàng',{exact:true}).count(),0,'unsaved draft does not grant key rights');
    await page.getByRole('tabpanel').getByText('Sản phẩm',{exact:true}).click();await page.getByRole('textbox',{name:'Lý do thay đổi',exact:true}).fill('Browser key test');await page.getByRole('button',{name:'Cấp khóa',exact:true}).click();await page.getByRole('dialog').waitFor();

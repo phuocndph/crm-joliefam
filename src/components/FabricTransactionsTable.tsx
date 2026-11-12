@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useFabricTransactions, useUpdateTransaction, useFabricInventory, useUpdateInventory } from "@/hooks/useFabrics";
+import { useFabricTransactions, useUpdateTransaction } from "@/hooks/useFabrics";
 import { ArrowUp, ArrowDown, RefreshCw, Edit, ChevronDown, ChevronUp, History } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -18,7 +18,6 @@ interface FabricTransactionsTableProps {
 
 export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = true }: FabricTransactionsTableProps) => {
   const { data: allTransactions = [] } = useFabricTransactions();
-  const { data: inventory = [] } = useFabricInventory();
   const [isOpen, setIsOpen] = useState(!defaultCollapsed);
   
   // Filter transactions by warehouse if filter is provided
@@ -34,7 +33,6 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
       })
     : allTransactions;
   const updateTransaction = useUpdateTransaction();
-  const updateInventory = useUpdateInventory();
 
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -127,9 +125,11 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
     }
 
     try {
-      const oldQuantity = selectedTransaction.quantity;
-      const newQuantity = selectedTransaction.transaction_type === 'transfer_out' ? -editForm.quantity : editForm.quantity;
-      const quantityDifference = newQuantity - oldQuantity;
+      // Máy chủ tự đặt dấu theo loại giao dịch, tính chênh lệch và đổi tồn trong cùng một bước.
+      // Riêng phiếu điều chỉnh giữ nguyên chiều (tăng/giảm) của số cũ.
+      const newQuantity = selectedTransaction.transaction_type === 'adjustment' && Number(selectedTransaction.quantity) < 0
+        ? -editForm.quantity
+        : editForm.quantity;
 
       await updateTransaction.mutateAsync({
         id: selectedTransaction.id,
@@ -141,37 +141,10 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
         supplier_name: editForm.supplier_name,
         notes: editForm.notes,
         unit_price: selectedTransaction.unit_price,
-        total_amount: selectedTransaction.total_amount,
         reference_number: selectedTransaction.reference_number,
         recipient_name: selectedTransaction.recipient_name,
         transaction_date: selectedTransaction.transaction_date
       });
-
-      const existingInventory = inventory.find(item => 
-        item.fabric_variant_id === selectedTransaction.fabric_variant_id && 
-        item.warehouse_id === selectedTransaction.warehouse_id
-      );
-
-      if (existingInventory) {
-        const newStock = existingInventory.current_stock + quantityDifference;
-        
-        let newPackagesCount;
-        if (selectedTransaction.transaction_type === 'inbound') {
-          newPackagesCount = editForm.packages_count;
-        } else {
-          newPackagesCount = existingInventory.packages_count + (editForm.packages_count - (selectedTransaction.packages_count || 0));
-        }
-        
-        await updateInventory.mutateAsync({
-          fabric_variant_id: selectedTransaction.fabric_variant_id,
-          warehouse_id: selectedTransaction.warehouse_id,
-          current_stock: newStock,
-          packages_count: Math.max(0, newPackagesCount),
-          reserved_stock: existingInventory.reserved_stock,
-          minimum_stock: existingInventory.minimum_stock,
-          maximum_stock: existingInventory.maximum_stock
-        });
-      }
 
       setShowEditDialog(false);
       setSelectedTransaction(null);
@@ -179,7 +152,7 @@ export const FabricTransactionsTable = ({ warehouseFilter, defaultCollapsed = tr
       toast({ title: "Thành công", description: "Đã cập nhật giao dịch" });
     } catch (error) {
       console.error('Error updating transaction:', error);
-      toast({ title: "Lỗi", description: "Có lỗi xảy ra khi cập nhật giao dịch", variant: "destructive" });
+      toast({ title: "Lỗi", description: error instanceof Error ? error.message : "Có lỗi xảy ra khi cập nhật giao dịch", variant: "destructive" });
     }
   };
 

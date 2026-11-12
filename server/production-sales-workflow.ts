@@ -114,6 +114,29 @@ export const currentProductionLine = (lines: Row[], saved: Row) =>
   lines.find((line) => line.source_line_key === saved.source_line_key)
   || lines.find((line) => line.source_line_index === saved.source_line_index && String(saved.source_line_key || "").split(":").length > 3);
 
+const dateText = (value: unknown) => value instanceof Date ? (Number.isNaN(value.getTime()) ? null : businessDateKey(value)) : value ? String(value).slice(0, 10) : null;
+const soldLineName = (item: Body) => String(item.name || item.product_name || canonicalItem(item.product).name || "").trim();
+// Size tokens like "160x200x25". Spaces are only collapsed around the "x" so
+// "giường 1m6 230x235" does not glue into "6230x235", and a trailing weight
+// ("70x140x500g", "45x70x320gsm") is not read as a third dimension.
+const sizeTokens = (value: unknown) => [...String(value ?? "").toLowerCase().replace(/\s*[x*×]\s*/g, "x").matchAll(/(?<![\d.,\p{L}])\d+(?:[.,]\d+)?(?:x\d+(?:[.,]\d+)?(?![\d.,]|\s*(?:g|gr|gram|gsm|oz)\b))+/gu)].map((match) => match[0]);
+/** True when the sold name states a size that differs from the line specification. */
+export const sizeMismatch = (name: unknown, specification: unknown) => {
+  const fromName = sizeTokens(name), fromSpec = sizeTokens(specification);
+  // Shorthand names drop the length ("Ga chống thấm 160x15F" for 160x200x15), so a
+  // name size matches when its numbers appear in order inside the specification.
+  const fits = (short: string, full: string) => { const want = short.split("x"); let i = 0; for (const part of full.split("x")) if (part === want[i]) i += 1; return i === want.length; };
+  return Boolean(fromName.length && fromSpec.length && !fromName.some((token) => fromSpec.some((spec) => fits(token, spec))));
+};
+/** Next readable production number for the business month, e.g. SX-2611-007. Caller holds a transaction. */
+export async function nextProductionGroupNumber(client: Pick<PoolClient, "query">) {
+  await client.query("select pg_advisory_xact_lock(hashtextextended('production-order-number',0))");
+  const month = businessDateKey().slice(2, 7).replace("-", "");
+  const prefix = `SX-${month}-`;
+  const last = (await client.query(`select coalesce(max((substring(production_order_number from '^SX-[0-9]{4}-([0-9]{3,})'))::int),0) seq
+    from local_production_orders where production_order_number like $1`, [`${prefix}%`])).rows[0];
+  return `${prefix}${String(Number(last?.seq || 0) + 1).padStart(3, "0")}`;
+}
 export async function normalizeOrderLines(client: Pick<PoolClient, "query">, order: Row) {
   const items = Array.isArray(order.items) ? order.items.map(canonicalItem) : [];
   const candidates = items.map(sourceProductCandidate).filter((id) => uuidPattern.test(id));
@@ -141,7 +164,11 @@ export async function normalizeOrderLines(client: Pick<PoolClient, "query">, ord
       source_line_snapshot: item,
       product_id: product?.id || null,
       product_sku: product?.sku || String(item.sku || canonicalItem(item.product).sku || ""),
-      product_name: product?.name || String(item.name || item.product_name || canonicalItem(item.product).name || `Dòng ${index + 1}`),
+      // The sold line name is what the customer bought (Sale often adjusts the
+      // size/fabric in the name); the catalog name is kept only as a reference.
+      product_name: soldLineName(item) || product?.name || `Dòng ${index + 1}`,
+      catalog_product_name: product?.name || null,
+      name_mismatch: sizeMismatch(soldLineName(item), item.dimensions || item.specifications || canonicalItem(item.product).specifications),
       ordered_quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
       color: item.color || null,
       size: item.size || null,
@@ -429,23 +456,62 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
       }
       const exactOrderId=String(req.query.order_id||'').trim();
       if(exactOrderId&&(exactOrderId.length>200||/[\x00-\x1f\x7f]/.test(exactOrderId)))fail('Mã đơn nguồn không hợp lệ.');
+      const includeDone=['1','true'].includes(String(req.query.include_done||''));
+      const search=String(req.query.q||'').trim().slice(0,100);
       if(exactOrderId){params.push(exactOrderId);scope+=` and o.id=$${params.length}`;}
-      const rows = (await pool.query(`select o.* from local_orders o where ${scope} order by coalesce(o.updated_at,o.created_at) desc nulls last limit ${exactOrderId?'1':'500'}`, params)).rows;
+      else if(!includeDone){
+        // Default picker: orders still to be made, plus any order that already has
+        // a live production request so in-flight work never disappears.
+        scope+=` and (lower(coalesce(o.status,'')) not in ('delivered','self_delivered','shipped','completed')
+          or exists(select 1 from local_production_sales_requests r where r.order_id=o.id and r.status not in ('RETURNED','CANCELLED')))`;
+      }
+      if(search&&!exactOrderId){
+        params.push(`%${search.replace(/[\\%_]/g,(c)=>'\\'+c)}%`);
+        scope+=` and (o.order_number ilike $${params.length} or o.display_order_number ilike $${params.length} or c.name ilike $${params.length} or c.phone ilike $${params.length} or c.company ilike $${params.length})`;
+      }
+      const limit=exactOrderId?1:includeDone||search?500:2000;
+      const rows = (await pool.query(`select o.*,c.name customer_name,c.phone customer_phone,c.company customer_company from local_orders o
+        left join local_customers c on c.id::text=o.customer_id::text
+        where ${scope} order by coalesce(o.updated_at,o.created_at) desc nulls last limit ${limit}`, params)).rows;
       const submitted=await submittedQuantities(pool,rows.map((row:Row)=>String(row.id)));
       const committedRows=rows.length?(await pool.query(`select r.order_id,l.source_line_key,coalesce(sum(a.quantity),0) quantity from local_production_sales_request_lines l join local_production_sales_requests r on r.id=l.request_id join local_production_sales_allocations a on a.request_line_id=l.id where r.order_id=any($1::text[]) group by r.order_id,l.source_line_key`,[rows.map((row:Row)=>String(row.id))])).rows:[];
       const committed=new Map<string,string>(committedRows.map((row:Row)=>[`${row.order_id}:${row.source_line_key}`,String(row.quantity)]));
       const output = [];
       for (const order of rows) {
+        const header = { id: order.id, order_number: order.order_number, display_order_number: order.display_order_number, status: order.status, delivery_date: dateText(order.confirmed_delivery_date) || dateText(order.desired_delivery_date) || dateText(order.delivery_date), total_amount: Number(order.total_amount || 0), updated_at: order.updated_at, created_at: order.created_at, customer_name: order.customer_company || order.customer_name || null, customer_phone: order.customer_phone || null };
         try {
           const items = await normalizeOrderLines(pool, order);
-          output.push({ id: order.id, order_number: order.order_number, display_order_number: order.display_order_number, status: order.status, delivery_date: order.delivery_date, total_amount: Number(order.total_amount || 0), updated_at: order.updated_at, items });
+          output.push({ ...header, items });
         } catch (error) {
           if ((error as { status?: number }).status !== 409) throw error;
-          output.push({ id: order.id, order_number: order.order_number, display_order_number: order.display_order_number, status: order.status, delivery_date: order.delivery_date, total_amount: Number(order.total_amount || 0), updated_at: order.updated_at, items: [], source_validation_error: error instanceof Error ? error.message : String(error) });
+          output.push({ ...header, items: [], source_validation_error: error instanceof Error ? error.message : String(error) });
         }
       }
       const supply=await fulfillmentForLines(pool,output.flatMap((row:Row)=>row.items as Row[]));
       res.json(output.map((row:Row)=>({...row,items:(row.items as Row[]).map(line=>({...sourceLineProjection(line,supply,submitted,String(row.id)),direct_remaining_quantity:String(Math.max(0,Number(line.ordered_quantity)-Number(committed.get(`${row.id}:${line.source_line_key}`)||0)))}))})));
+    } catch (error) { d.sendError(res, error); }
+  });
+
+  // Small counter for the navigation badge: requests waiting for a manager.
+  app.get("/api/production-sales/requests/pending-count", async (_req, res) => {
+    try {
+      try { await manage(pool); } catch { res.json({ pending: 0, adjustment: 0, can_review: false }); return; }
+      const row = (await pool.query("select count(*) filter (where status='SUBMITTED')::int pending,count(*) filter (where status='ADJUSTMENT_REQUIRED')::int adjustment from local_production_sales_requests")).rows[0];
+      res.json({ pending: row.pending, adjustment: row.adjustment, can_review: true });
+    } catch (error) { d.sendError(res, error); }
+  });
+
+  // Last sewing code used for the same catalog product (and same specification when
+  // known). Only a suggestion: the client re-checks it against the live catalog.
+  app.get("/api/production/sewing-code-suggestions", async (req, res) => {
+    try {
+      await capability(pool, ["production_manage", "production_sales_workflow", "production_view"]);
+      const ids = String(req.query.product_ids || "").split(",").map((id) => id.trim()).filter((id) => uuidPattern.test(id)).slice(0, 100);
+      if (!ids.length) { res.json([]); return; }
+      const rows = (await pool.query(`select distinct on (i.product_id, coalesce(i.dimensions::text,'')) i.product_id, i.dimensions, i.sewing_code_selection->>'piece_rate_code' piece_rate_code, i.created_at
+        from local_production_order_items i where i.product_id=any($1::uuid[]) and i.sewing_code_selection ? 'piece_rate_code'
+        order by i.product_id, coalesce(i.dimensions::text,''), i.created_at desc`, [ids])).rows;
+      res.json(rows.map((row: Row) => ({ product_id: row.product_id, dimensions: row.dimensions ?? null, piece_rate_code: row.piece_rate_code, used_at: row.created_at })));
     } catch (error) { d.sendError(res, error); }
   });
 
@@ -533,7 +599,9 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
         if (!["ACCEPTED", "RETURNED", "CANCELLED"].includes(target) || (["RETURNED", "CANCELLED"].includes(target) && !reason)) fail("Trạng thái hoặc lý do xử lý không hợp lệ.");
         const current = (await client.query("select * from local_production_sales_requests where id=$1 for update", [req.params.id])).rows[0];
         if (!current || !["SUBMITTED", "ADJUSTMENT_REQUIRED"].includes(current.status)) fail("Yêu cầu không còn ở trạng thái chờ xử lý.", 409);
-        if (current.status === "SUBMITTED" && current.submitted_by === d.actor()) fail("Người gửi không được tự tiếp nhận yêu cầu.", 403);
+        // A production manager may accept their own request (small teams have one
+        // manager); the review event records it as self-accepted for audit.
+        const selfAccepted = current.status === "SUBMITTED" && current.submitted_by === d.actor();
         const allocated = (await client.query("select 1 from local_production_sales_allocations a join local_production_sales_request_lines l on l.id=a.request_line_id where l.request_id=$1 limit 1", [current.id])).rows[0];
         if (allocated && ["RETURNED", "CANCELLED"].includes(target)) fail("Yêu cầu đã lập lệnh; không được hủy dữ liệu nguồn, hãy giữ trạng thái cần điều chỉnh để xử lý các lệnh đang tạm dừng.", 409);
         // Resolve the source version from the current local snapshot at review
@@ -562,7 +630,7 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           : null;
         const updated = await client.query("update local_production_sales_requests set status=$2,reviewed_by=$3,review_reason=$4,reviewed_at=now(),updated_at=now() where id=$1 returning *", [req.params.id, target, d.actor(), reason || null]);
         if (current.status === "ADJUSTMENT_REQUIRED" && target === "ACCEPTED") await client.query("update local_production_orders set status=case when released_at is null then 'DRAFT' else 'IN_PROGRESS' end,updated_at=now(),local_modified_at=now() where sales_request_id=$1 and status='ON_HOLD'", [current.id]);
-        await client.query("insert into local_production_sales_events(request_id,action,from_status,to_status,reason,actor_id,data) values($1,'REVIEW',$2,$3,$4,$5,$6::jsonb)", [req.params.id, current.status, target, reason || null, d.actor(), JSON.stringify(sourceChange?.data || {})]);
+        await client.query("insert into local_production_sales_events(request_id,action,from_status,to_status,reason,actor_id,data) values($1,'REVIEW',$2,$3,$4,$5,$6::jsonb)", [req.params.id, current.status, target, reason || null, d.actor(), JSON.stringify({ ...(sourceChange?.data || {}), ...(selfAccepted ? { self_accepted: true } : {}) })]);
         if (sourceChange?.data?.source_hash) await client.query("insert into local_production_sales_events(request_id,action,from_status,to_status,reason,actor_id,data) values($1,'SOURCE_CHANGE_ACKNOWLEDGED',$2,$3,$4,$5,$6::jsonb)", [req.params.id, current.status, target, reason || "Tiếp tục sản xuất theo dữ liệu nguồn đã chốt trước đó.", d.actor(), JSON.stringify({ source_hash: sourceChange.data.source_hash, expected_source_hash: sourceChange.data.source_hash })]);
         return { ...updated.rows[0], reused: false };
       });
@@ -640,8 +708,10 @@ export function registerProductionSalesWorkflow(app: express.Express, d: Depende
           selected.sewing=await snapshotProductionSewingSelection(client,selected.itemContext,input.sewing_code_selection,body.planned_start_date||businessDateKey(),d.actor(),{order_id:String(request.order_id),line:selected.source});
         }
         const groupId = randomUUID(), orders = [];
-        for (const {line,input,quantity:qty,itemContext:itemFacts,sewing} of selectedLines) {
-          const number = `SX-${businessDateKey().slice(0,7).replace("-","")}-${randomUUID().slice(0,8).toUpperCase()}`;
+        // One readable number per sales order allocation; lines get /1, /2 suffixes.
+        const groupNumber = await nextProductionGroupNumber(client);
+        for (const [lineIndex,{line,input,quantity:qty,itemContext:itemFacts,sewing}] of selectedLines.entries()) {
+          const number = selectedLines.length === 1 ? groupNumber : `${groupNumber}-${lineIndex + 1}`;
           const orderUuid = uuidPattern.test(String(request.order_id)) ? request.order_id : null;
           const po = (await client.query(`insert into local_production_orders(production_order_number,production_batch_number,product_id,quantity_planned,source_type,source_id,order_id,planned_start_date,planned_end_date,production_order_group_id,created_by,dispatch_priority,dispatch_reference,dispatch_notes,sales_request_id,workflow_generation)
             values($1,$1,$2,$3,'FROM_ORDER',$4::uuid,$13::text,$5,$6,$7,$8,$9,$10,$11,$12,'WORKFLOW_V3') returning *`, [number, line.product_id, qty, orderUuid, body.planned_start_date || null, body.planned_end_date || request.due_date || null, groupId, d.actor(), priority, body.reference || null, body.notes || request.notes || null, request.id, String(request.order_id)])).rows[0];

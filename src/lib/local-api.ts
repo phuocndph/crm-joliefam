@@ -255,7 +255,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const response = await localFetch(`${localApiUrl()}${path}${query ? `?${query}` : ""}`, {
     signal:options.signal,
     method: options.method ?? "GET",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-crm-fabric-ui": "2" },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   },true,options.authGuard);
   const payload = await response.json().catch(() => ({}));
@@ -577,7 +577,9 @@ export const localApi = {
   completeProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/complete`, { method: "POST", body }),
   transitionProductionOrder: (id: string, body: Record<string, unknown>) => request<Record<string, unknown>>(`/api/production-orders/${encodeURIComponent(id)}/transition`, { method: "POST", body }),
   createProductionFromCrmOrder: (id:string,body:Record<string,unknown>,authGuard?:LocalAuthGuard) => request<Record<string,unknown>>(`/api/production/source-orders/${encodeURIComponent(id)}/create`,{method:'POST',body,authGuard}),
-  productionSourceOrders: (orderId?: string) => request<Record<string, unknown>[]>("/api/production/source-orders", { query: orderId ? { order_id: orderId } : undefined }),
+  productionSourceOrders: (orderId?: string, options?: { includeDone?: boolean; search?: string }) => request<Record<string, unknown>[]>("/api/production/source-orders", { query: orderId ? { order_id: orderId } : options?.includeDone || options?.search ? { ...(options.includeDone ? { include_done: "1" } : {}), ...(options.search ? { q: options.search } : {}) } : undefined }),
+  productionSalesPendingCount: () => request<{ pending: number; adjustment: number; can_review: boolean }>("/api/production-sales/requests/pending-count"),
+  productionSewingSuggestions: (productIds: string[]) => request<import('./production-dispatch-types').ProductionSewingSuggestion[]>("/api/production/sewing-code-suggestions", { query: { product_ids: productIds.join(",") } }),
   productionSalesRequests: (mine = false, scope?: 'purchase') => request<import('./production-dispatch-types').ProductionSalesRequest[]>("/api/production-sales/requests", { query: { mine: mine ? '1' : '0', scope } }),
   createProductionSalesRequest: (body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<import('./production-dispatch-types').ProductionSalesRequest>("/api/production-sales/requests", { method: "POST", body,authGuard }),
   reviewProductionSalesRequest: (id: string, body: Record<string, unknown>,authGuard?:LocalAuthGuard) => request<Record<string, unknown>>(`/api/production-sales/requests/${encodeURIComponent(id)}/review`, { method: "POST", body,authGuard }),

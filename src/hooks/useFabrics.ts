@@ -591,6 +591,7 @@ export const useCreateTransfer = () => {
       from_warehouse_id: string;
       to_warehouse_id: string;
       quantity: number;
+      packages_count?: number;
       notes?: string;
       transfer_date?: string;
     }) => {
@@ -606,7 +607,9 @@ export const useCreateTransfer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fabric-transfers'] });
-      toast({ title: "Thành công", description: "Đã tạo yêu cầu chuyển kho" });
+      queryClient.invalidateQueries({ queryKey: ['fabric-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['fabric-transactions'] });
+      toast({ title: "Thành công", description: "Đã chuyển kho và cập nhật tồn" });
     },
   });
 };

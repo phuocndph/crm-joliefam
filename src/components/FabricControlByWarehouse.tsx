@@ -11,7 +11,7 @@ import { DatePickerWithRange } from '@/components/ui/date-range-picker';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Filter, Search, Package, TrendingUp, ArrowRight, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
-import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer, useUpdateInventory, useCreateTransaction } from '@/hooks/useFabrics';
+import { useFabricUsage, useFabricVariants, useWarehouses, useCreateFabricUsage, useFabricInventory, useCreateTransfer } from '@/hooks/useFabrics';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -40,8 +40,6 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
   } = useFabricInventory();
   const createFabricUsage = useCreateFabricUsage();
   const createTransfer = useCreateTransfer();
-  const updateInventory = useUpdateInventory();
-  const createTransaction = useCreateTransaction();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManager, setSelectedManager] = useState('all');
   const [selectedFabricType, setSelectedFabricType] = useState('all');
@@ -338,7 +336,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       return;
     }
     try {
-      // Create transfer record
+      // Lập phiếu chuyển: máy chủ kiểm tồn, đổi tồn hai kho và ghi lịch sử cùng lúc
       const fromWarehouse = isFromHanoi ? hanoiWarehouse : bacninhWarehouse;
       const toWarehouse = isFromHanoi ? bacninhWarehouse : hanoiWarehouse;
       await createTransfer.mutateAsync({
@@ -349,48 +347,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
         notes: transferNotes || `Chuyển ${transferQuantity}m từ ${fromWarehouse.name} về ${toWarehouse.name}`
       });
 
-      // Update inventory - reduce from source warehouse
-      const fromInventoryItem = inventory.find(item => item.fabric_variant_id === fabricVariant.id && item.warehouse_id === fromWarehouse.id);
-      if (fromInventoryItem) {
-        const newFromStock = Math.max(0, fromInventoryItem.current_stock - transferQuantity);
-        await updateInventory.mutateAsync({
-          fabric_variant_id: fabricVariant.id,
-          warehouse_id: fromWarehouse.id,
-          current_stock: newFromStock,
-          reserved_stock: fromInventoryItem.reserved_stock || 0,
-          minimum_stock: fromInventoryItem.minimum_stock || 0,
-          maximum_stock: fromInventoryItem.maximum_stock || 0
-        });
-      }
-
-      // Update inventory - add to destination warehouse
-      const toInventoryItem = inventory.find(item => item.fabric_variant_id === fabricVariant.id && item.warehouse_id === toWarehouse.id);
-      const newToStock = (toInventoryItem?.current_stock || 0) + transferQuantity;
-      await updateInventory.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: toWarehouse.id,
-        current_stock: newToStock,
-        reserved_stock: toInventoryItem?.reserved_stock || 0,
-        minimum_stock: toInventoryItem?.minimum_stock || 0,
-        maximum_stock: toInventoryItem?.maximum_stock || 0
-      });
-
-      // Create transfer transactions for history
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: fromWarehouse.id,
-        transaction_type: 'transfer_out',
-        quantity: -transferQuantity,
-        notes: `Chuyển đến ${toWarehouse.name}. ${transferNotes || ''}`
-      });
-
-      await createTransaction.mutateAsync({
-        fabric_variant_id: fabricVariant.id,
-        warehouse_id: toWarehouse.id,
-        transaction_type: 'transfer_in',
-        quantity: transferQuantity,
-        notes: `Nhận từ ${fromWarehouse.name}. ${transferNotes || ''}`
-      });
+      // Máy chủ tự trừ kho đi, cộng kho nhận và ghi 2 giao dịch trong cùng một bước.
 
       setSelectedFabricForTransfer('');
       setTransferQuantity(0);
@@ -404,7 +361,7 @@ export const FabricControlByWarehouse: React.FC<FabricControlByWarehouseProps> =
       console.error('Error creating transfer:', error);
       toast({
         title: "Lỗi",
-        description: "Có lỗi xảy ra khi chuyển vải",
+        description: error instanceof Error ? error.message : "Có lỗi xảy ra khi chuyển vải",
         variant: "destructive"
       });
     }
