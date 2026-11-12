@@ -94,6 +94,19 @@ npm run test:production
 Database suites require the isolated local Docker environment. A failed or missing
 Docker runtime is not permission to use the production Supabase project.
 
+## VPS Web Deploy (mandatory)
+
+Production (crm.joliefam.vn) runs the frontend in local backend mode. When the web
+image is packaged from a `dist/` built outside Docker:
+
+1. Build with `npm run build:vps`. Never use `npm run build` or `vite build` for a VPS
+   image: they omit `VITE_BACKEND_MODE=local` and the app renders a blank page
+   ("Missing VITE_SUPABASE_URL"). This happened on 2026-11-11 and CRM was blank ~15h.
+2. Before packaging, run `scripts/check-vps-web-build.sh dist`.
+3. After deploying, run `scripts/check-vps-web-build.sh dist https://crm.joliefam.vn/`.
+   An HTTP 200 alone is not proof; the login form must render.
+4. If either check prints FAIL, do not deploy and do not report the deploy as done.
+
 ## Definition Of Done
 
 - The requested behavior is implemented without unrelated refactors.
